@@ -1,0 +1,5 @@
+# deploy.sh corre en el droplet (bash) y en Git Bash: CRLF lo rompe con
+# ": command not found". Se fuerza LF en checkout para todo lo que se
+# ejecuta o se copia a Linux.
+*.sh text eol=lf
+*.conf text eol=lf
