@@ -73,6 +73,16 @@ const router = createRouter({
           component: () => import('@/modules/templates/views/TemplatesView.vue'),
         },
         {
+          path: 'flujos',
+          name: 'flows',
+          component: () => import('@/modules/flows/views/FlowsView.vue'),
+        },
+        {
+          path: 'contactos',
+          name: 'contacts',
+          component: () => import('@/modules/flows/views/ContactsView.vue'),
+        },
+        {
           // Solo plataforma: el guard de abajo lo rebota al dashboard si un
           // cliente lo escribe a mano (el backend igual respondera 401 -
           // esto es UX, la seguridad vive en el servidor).

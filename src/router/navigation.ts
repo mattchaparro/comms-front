@@ -9,6 +9,8 @@ export const platformNavItems: NavItem[] = [
   { label: 'Webhooks', icon: 'pi pi-arrow-right-arrow-left', routeName: 'webhooks' },
   { label: 'Negocios / Canales', icon: 'pi pi-whatsapp', routeName: 'channels' },
   { label: 'Plantillas', icon: 'pi pi-file-check', routeName: 'templates' },
+  { label: 'Flujos', icon: 'pi pi-sitemap', routeName: 'flows' },
+  { label: 'Contactos', icon: 'pi pi-id-card', routeName: 'contacts' },
   { label: 'Usuarios', icon: 'pi pi-users', routeName: 'users' },
   // Fase 4 del plan (nexolu-utils/docs/research/whatsapp-plan-implementacion.md):
   { label: 'Catálogo', icon: 'pi pi-shopping-bag' },
@@ -20,5 +22,7 @@ export const clientNavItems: NavItem[] = [
   { label: 'Webhooks', icon: 'pi pi-arrow-right-arrow-left', routeName: 'webhooks' },
   { label: 'Canales', icon: 'pi pi-whatsapp', routeName: 'channels' },
   { label: 'Plantillas', icon: 'pi pi-file-check', routeName: 'templates' },
+  { label: 'Flujos', icon: 'pi pi-sitemap', routeName: 'flows' },
+  { label: 'Contactos', icon: 'pi pi-id-card', routeName: 'contacts' },
   { label: 'Catálogo', icon: 'pi pi-shopping-bag' },
 ]
