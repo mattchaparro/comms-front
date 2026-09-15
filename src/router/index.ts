@@ -68,6 +68,11 @@ const router = createRouter({
           component: () => import('@/modules/channels/views/BusinessChannelsView.vue'),
         },
         {
+          path: 'plantillas',
+          name: 'templates',
+          component: () => import('@/modules/templates/views/TemplatesView.vue'),
+        },
+        {
           // Solo plataforma: el guard de abajo lo rebota al dashboard si un
           // cliente lo escribe a mano (el backend igual respondera 401 -
           // esto es UX, la seguridad vive en el servidor).

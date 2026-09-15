@@ -8,9 +8,9 @@ export const platformNavItems: NavItem[] = [
   { label: 'Apps y credenciales', icon: 'pi pi-box', routeName: 'comms-core.apps' },
   { label: 'Webhooks', icon: 'pi pi-arrow-right-arrow-left', routeName: 'webhooks' },
   { label: 'Negocios / Canales', icon: 'pi pi-whatsapp', routeName: 'channels' },
+  { label: 'Plantillas', icon: 'pi pi-file-check', routeName: 'templates' },
   { label: 'Usuarios', icon: 'pi pi-users', routeName: 'users' },
-  // Fases 3 y 4 del plan (nexolu-utils/docs/research/whatsapp-plan-implementacion.md):
-  { label: 'Plantillas', icon: 'pi pi-file-check' },
+  // Fase 4 del plan (nexolu-utils/docs/research/whatsapp-plan-implementacion.md):
   { label: 'Catálogo', icon: 'pi pi-shopping-bag' },
 ]
 
@@ -19,6 +19,6 @@ export const clientNavItems: NavItem[] = [
   { label: 'Mi negocio', icon: 'pi pi-box', routeName: 'comms-core.apps' },
   { label: 'Webhooks', icon: 'pi pi-arrow-right-arrow-left', routeName: 'webhooks' },
   { label: 'Canales', icon: 'pi pi-whatsapp', routeName: 'channels' },
-  { label: 'Plantillas', icon: 'pi pi-file-check' },
+  { label: 'Plantillas', icon: 'pi pi-file-check', routeName: 'templates' },
   { label: 'Catálogo', icon: 'pi pi-shopping-bag' },
 ]
