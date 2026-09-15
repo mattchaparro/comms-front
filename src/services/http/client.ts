@@ -1,0 +1,64 @@
+import axios from 'axios'
+
+import router from '@/router'
+import { useFlashStore } from '@/stores/flash.store'
+
+import { tokenStorage } from './tokenStorage'
+
+declare module 'axios' {
+  interface AxiosRequestConfig {
+    /**
+     * Deja que quien llama maneje el error sin que el interceptor navegue
+     * por su cuenta. Lo usa el canje SSO, que corre DENTRO del guard del
+     * router: un `router.push` desde el interceptor en medio de una
+     * navegacion la aborta, y ademas seria redundante porque el guard ya
+     * decide a donde ir.
+     */
+    skipAuthRedirect?: boolean
+  }
+}
+
+// Habla exclusivamente con nexolu-comms-api - este panel ES el front
+// dedicado de ese servicio. La credencial es el JWT que emite
+// POST /panel/auth/login (nunca la NEXOLU_PLATFORM_API_KEY, que es
+// server-side y jamas debe viajar a un navegador).
+export const httpClient = axios.create({
+  baseURL: import.meta.env.VITE_API_BASE_URL,
+  headers: {
+    Accept: 'application/json',
+  },
+})
+
+httpClient.interceptors.request.use((config) => {
+  const token = tokenStorage.get()
+  if (token) {
+    config.headers.Authorization = `Bearer ${token}`
+  }
+  return config
+})
+
+// Mismo criterio que nexolu-pos-front: el token es un PAT de Sanctum sin
+// refresh (ver nexolu-pos-api config/sanctum.php) - un 401 limpia la sesion
+// y vuelve a pedir credenciales en vez de fallar en silencio.
+httpClient.interceptors.response.use(
+  (response) => response,
+  (error) => {
+    if (error.config?.skipAuthRedirect) {
+      return Promise.reject(error)
+    }
+
+    const status = error.response?.status
+    const onLogin = router.currentRoute.value.name === 'login'
+
+    if (status === 401 && !onLogin) {
+      tokenStorage.clear()
+      useFlashStore().set('Tu sesión expiró. Inicia sesión de nuevo.', 'warn')
+      router.push({ name: 'login' })
+    } else if (status === 403 && !onLogin) {
+      const message = error.response?.data?.detail ?? 'No tienes permiso para esta acción.'
+      useFlashStore().set(message, 'error')
+    }
+
+    return Promise.reject(error)
+  },
+)
