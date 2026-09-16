@@ -51,7 +51,11 @@ export class FlowSimulator {
   choose(optionId: string): void {
     const node = this.node(this.current)
     if (!node || this.waiting !== 'choice') return
-    const options = [...(node.buttons ?? []), ...(node.rows ?? [])]
+    const options = [
+      ...(node.buttons ?? []),
+      ...(node.rows ?? []),
+      ...(node.blocks ?? []).flatMap((b) => [...(b.buttons ?? []), ...(b.rows ?? [])]),
+    ]
     const chosen = options.find((o) => o.id === optionId)
     if (!chosen) return
     this.events.push({ kind: 'user', text: chosen.title })
@@ -59,16 +63,18 @@ export class FlowSimulator {
     this.run(chosen.next ?? null)
   }
 
-  /** La clienta escribe texto libre (solo avanza en un nodo capture). */
+  /** La clienta escribe texto libre (solo avanza en una captura). */
   input(text: string): void {
     const node = this.node(this.current)
     if (!node || this.waiting !== 'text' || !text.trim()) return
+    const lastBlock = node.blocks?.[node.blocks.length - 1]
+    const field = node.type === 'blocks' ? lastBlock?.field : node.field
     this.events.push({ kind: 'user', text })
-    this.contact.fields = { ...this.contact.fields, [String(node.field)]: text.trim() }
+    this.contact.fields = { ...this.contact.fields, [String(field)]: text.trim() }
     this.events.push({
       kind: 'info',
       icon: 'pi pi-inbox',
-      text: `Guardado en el campo «${node.field}»`,
+      text: `Guardado en el campo «${field}»`,
     })
     this.waiting = null
     this.run(node.next ?? null)
@@ -164,6 +170,78 @@ export class FlowSimulator {
           })
           nodeId = node.next ?? null
           break
+        case 'blocks': {
+          // El paso "Enviar mensaje": cada bloque como su propio mensaje.
+          const options: { id: string; title: string; description?: string }[] = []
+          let waitsText = false
+          for (const block of node.blocks ?? []) {
+            const blockText = interpolate(String(block.text ?? ''), this.context())
+            switch (block.type) {
+              case 'wait':
+                this.events.push({
+                  kind: 'info',
+                  icon: 'pi pi-clock',
+                  text: `Pausa de ${block.seconds ?? 1}s`,
+                })
+                break
+              case 'image':
+              case 'video':
+              case 'audio':
+              case 'document':
+                this.events.push({
+                  kind: 'media',
+                  mediaKind: block.type,
+                  url: interpolate(String(block.url ?? ''), this.context()),
+                  caption: block.caption ? interpolate(block.caption, this.context()) : undefined,
+                })
+                break
+              case 'cta':
+                this.events.push({
+                  kind: 'cta',
+                  text: blockText,
+                  url: interpolate(String(block.url ?? ''), this.context()),
+                  button: block.button || 'Abrir',
+                })
+                break
+              case 'capture':
+                this.events.push({ kind: 'bubble', text: blockText })
+                waitsText = true
+                break
+              case 'list':
+                this.events.push({ kind: 'bubble', text: blockText })
+                this.events.push({
+                  kind: 'choices',
+                  listButton: block.button || 'Ver opciones',
+                  options: (block.rows ?? []).map((r) => ({
+                    id: r.id,
+                    title: interpolate(r.title, this.context()),
+                    description: r.description ? interpolate(r.description, this.context()) : undefined,
+                  })),
+                })
+                break
+              default: {
+                this.events.push({ kind: 'bubble', text: blockText })
+                for (const button of block.buttons ?? []) {
+                  options.push({ id: button.id, title: interpolate(button.title, this.context()) })
+                }
+              }
+            }
+          }
+          const lastIsList = node.blocks?.[node.blocks.length - 1]?.type === 'list'
+          if (waitsText) {
+            this.waiting = 'text'
+            return
+          }
+          if (options.length && !lastIsList) {
+            this.events.push({ kind: 'choices', options })
+          }
+          if (options.length || lastIsList) {
+            this.waiting = 'choice'
+            return
+          }
+          nodeId = node.next ?? null
+          break
+        }
         case 'product': {
           if (text) this.events.push({ kind: 'bubble', text })
           const count = node.sections

@@ -27,7 +27,7 @@ import { fetchCommsApps } from '@/modules/commsCore/services/commsCoreService'
 import { fetchTemplates } from '@/modules/templates/services/templatesService'
 import TemplatePreview from '@/modules/templates/components/TemplatePreview.vue'
 import ConnectWordmark from '@/ui/ConnectWordmark.vue'
-import type { FlowDefinition, FlowNodeDef, FlowNodeType } from '@/types/flows'
+import type { BlockType, FlowDefinition, FlowNodeDef, FlowNodeType, MessageBlock } from '@/types/flows'
 import type { WhatsAppTemplate } from '@/types/templates'
 
 import { createFlow, fetchFlows, updateFlow } from '../services/flowsService'
@@ -656,6 +656,136 @@ const templateChoice = computed({
   },
 })
 
+// --- nodo blocks: el editor "Enviar mensaje" (calcado de ManyChat) ------------
+
+// Los bloques de contenido que se pueden añadir. `primary` va siempre a la
+// vista; el resto vive detras de "Más" (mismo patron del referente).
+const BLOCK_CATALOG: {
+  type: BlockType
+  label: string
+  icon: string
+  description: string
+  primary: boolean
+}[] = [
+  { type: 'text', label: 'Texto', icon: 'pi pi-align-left', description: 'Añadir texto y botones simples', primary: true },
+  { type: 'image', label: 'Imagen', icon: 'pi pi-image', description: 'Aumentar la participación con elementos visuales', primary: true },
+  { type: 'wait', label: 'Retraso', icon: 'pi pi-clock', description: 'Espera unos segundos entre los textos', primary: true },
+  { type: 'capture', label: 'Recopilación de datos', icon: 'pi pi-inbox', description: 'Recopila correos, teléfonos y más', primary: true },
+  { type: 'document', label: 'Archivo', icon: 'pi pi-paperclip', description: 'Añadir archivos al mensaje', primary: false },
+  { type: 'audio', label: 'Audio', icon: 'pi pi-volume-up', description: 'Envía fragmentos de voz en el chat', primary: false },
+  { type: 'video', label: 'Video', icon: 'pi pi-video', description: 'Compartir video en el chat', primary: false },
+  { type: 'list', label: 'Mensaje de lista', icon: 'pi pi-bars', description: 'Crea un menú con opciones', primary: false },
+  { type: 'cta', label: 'Abrir link', icon: 'pi pi-external-link', description: 'Botón que abre una URL', primary: false },
+]
+
+const showMoreBlocks = ref(false)
+
+function nodeOptionIds(def: FlowNodeDef): { id: string }[] {
+  return (def.blocks ?? []).flatMap((b) => [...(b.buttons ?? []), ...(b.rows ?? [])])
+}
+
+// list/capture esperan respuesta: van de ULTIMOS y solo puede haber uno.
+const hasTerminalBlock = computed(() =>
+  (selectedNode.value?.data?.def.blocks ?? []).some((b) => ['list', 'capture'].includes(b.type)),
+)
+const hasButtonBlocks = computed(() =>
+  (selectedNode.value?.data?.def.blocks ?? []).some((b) => (b.buttons ?? []).length > 0),
+)
+
+function defaultBlock(type: BlockType): MessageBlock {
+  switch (type) {
+    case 'text':
+      return { type, text: '' }
+    case 'cta':
+      return { type, text: '', url: 'https://', button: 'Abrir' }
+    case 'image':
+    case 'video':
+    case 'audio':
+    case 'document':
+      return { type, url: 'https://' }
+    case 'wait':
+      return { type, seconds: 2 }
+    case 'capture':
+      return { type, text: '', field: '' }
+    case 'list':
+      return { type, text: '', button: 'Ver opciones', rows: [{ id: 'opcion_1', title: '' }] }
+  }
+}
+
+function addBlock(type: BlockType): void {
+  const def = selectedNode.value?.data?.def
+  if (!def?.blocks || def.blocks.length >= 10) return
+  if (['list', 'capture'].includes(type) && hasTerminalBlock.value) return
+  if (type === 'capture' && hasButtonBlocks.value) return
+  const block = defaultBlock(type)
+  if (block.type === 'list') {
+    block.rows = [{ id: newButtonId(nodeOptionIds(def)), title: '' }]
+  }
+  // Los bloques normales entran ANTES del list/capture final; los
+  // terminales, de ultimos.
+  const terminalIndex = def.blocks.findIndex((b) => ['list', 'capture'].includes(b.type))
+  if (['list', 'capture'].includes(type) || terminalIndex === -1) def.blocks.push(block)
+  else def.blocks.splice(terminalIndex, 0, block)
+  showMoreBlocks.value = false
+  void nextTick(() => updateNodeInternals([selectedId.value!]))
+}
+
+function removeBlock(index: number): void {
+  const def = selectedNode.value?.data?.def
+  if (!def?.blocks || def.blocks.length <= 1) return
+  const [removed] = def.blocks.splice(index, 1)
+  const gone = new Set(
+    [...(removed.buttons ?? []).map((b) => `btn:${b.id}`), ...(removed.rows ?? []).map((r) => `row:${r.id}`)],
+  )
+  if (gone.size) {
+    edges.value = edges.value.filter(
+      (e) => !(e.source === selectedId.value && e.sourceHandle && gone.has(e.sourceHandle)),
+    )
+  }
+  void nextTick(() => updateNodeInternals([selectedId.value!]))
+}
+
+function moveBlock(index: number, delta: -1 | 1): void {
+  const def = selectedNode.value?.data?.def
+  if (!def?.blocks) return
+  const target = index + delta
+  if (target < 0 || target >= def.blocks.length) return
+  // Un terminal no se mueve de ultimo, y nada pasa por encima de el.
+  if (['list', 'capture'].includes(def.blocks[index].type)) return
+  if (['list', 'capture'].includes(def.blocks[target].type)) return
+  ;[def.blocks[index], def.blocks[target]] = [def.blocks[target], def.blocks[index]]
+  void nextTick(() => updateNodeInternals([selectedId.value!]))
+}
+
+function addBlockOption(block: MessageBlock, kind: 'buttons' | 'rows'): void {
+  const def = selectedNode.value?.data?.def
+  if (!def) return
+  const list = (block[kind] ??= [])
+  const max = kind === 'buttons' ? 3 : 10
+  if (list.length >= max) return
+  list.push({ id: newButtonId(nodeOptionIds(def)), title: '' })
+  void nextTick(() => updateNodeInternals([selectedId.value!]))
+}
+
+function removeBlockOption(block: MessageBlock, kind: 'buttons' | 'rows', index: number): void {
+  const list = block[kind]
+  if (!list) return
+  const [removed] = list.splice(index, 1)
+  const handle = `${kind === 'buttons' ? 'btn' : 'row'}:${removed.id}`
+  edges.value = edges.value.filter(
+    (e) => !(e.source === selectedId.value && e.sourceHandle === handle),
+  )
+  void nextTick(() => updateNodeInternals([selectedId.value!]))
+}
+
+function insertVariableInto(block: MessageBlock, path: string): void {
+  block.text = `${block.text ?? ''}{{${path}}}`
+}
+
+function blockMeta(type: BlockType) {
+  return BLOCK_CATALOG.find((b) => b.type === type)!
+}
+
 // --- nodo product -------------------------------------------------------------
 
 const catalogItemOptions = computed(() =>
@@ -767,10 +897,14 @@ function save(): void {
   saveMutation.mutate()
 }
 
-const menuTypes = Object.entries(NODE_CATALOG) as [
-  FlowNodeType,
-  (typeof NODE_CATALOG)[FlowNodeType],
-][]
+// El menu de nodos muestra el paso "Enviar mensaje" (blocks) y la logica;
+// los nodos granulares viejos (message/buttons/media/list/capture/cta_url)
+// siguen soportados por el motor y se editan si ya existen, pero no se
+// ofrecen: todo eso ahora son bloques DENTRO de Enviar mensaje.
+const MENU_HIDDEN: FlowNodeType[] = ['message', 'buttons', 'cta_url', 'media', 'list', 'capture']
+const menuTypes = (
+  Object.entries(NODE_CATALOG) as [FlowNodeType, (typeof NODE_CATALOG)[FlowNodeType]][]
+).filter(([type]) => !MENU_HIDDEN.includes(type))
 </script>
 
 <template>
@@ -1011,6 +1145,187 @@ const menuTypes = Object.entries(NODE_CATALOG) as [
           </div>
 
           <div class="flex flex-1 flex-col gap-3 overflow-y-auto p-4">
+            <!-- nodo blocks: el paso "Enviar mensaje" con su pila de bloques -->
+            <template v-if="selectedNode.data!.def.type === 'blocks'">
+              <div class="flex flex-col gap-1.5">
+                <InputText
+                  v-model="selectedNode.data!.def.title"
+                  placeholder="Enviar mensaje"
+                  fluid
+                  class="!text-sm font-semibold"
+                />
+                <p class="text-[11px] text-slate-400">
+                  Enviar <span class="text-teal-600">dentro de la ventana de 24 horas</span>
+                  <i class="pi pi-question-circle ml-1" title="Los mensajes de sesión solo entregan si la clienta escribió en las últimas 24h. Para reabrir la conversación usa el paso Plantilla." />
+                </p>
+              </div>
+
+              <div
+                v-for="(block, bIndex) in selectedNode.data!.def.blocks"
+                :key="bIndex"
+                class="flex flex-col gap-2 rounded-xl border border-slate-200 p-2.5"
+              >
+                <div class="flex items-center gap-1.5">
+                  <i :class="blockMeta(block.type).icon" class="text-[11px] text-slate-400" />
+                  <span class="text-[11px] font-semibold uppercase tracking-wide text-slate-400">
+                    {{ blockMeta(block.type).label }}
+                  </span>
+                  <div class="ml-auto flex">
+                    <button type="button" class="rounded p-1 text-slate-300 hover:text-slate-600" title="Subir" @click="moveBlock(bIndex, -1)">
+                      <i class="pi pi-chevron-up text-[10px]" />
+                    </button>
+                    <button type="button" class="rounded p-1 text-slate-300 hover:text-slate-600" title="Bajar" @click="moveBlock(bIndex, 1)">
+                      <i class="pi pi-chevron-down text-[10px]" />
+                    </button>
+                    <button
+                      type="button"
+                      class="rounded p-1 text-slate-300 hover:text-red-500"
+                      title="Quitar bloque"
+                      :disabled="selectedNode.data!.def.blocks!.length <= 1"
+                      @click="removeBlock(bIndex)"
+                    >
+                      <i class="pi pi-times text-[10px]" />
+                    </button>
+                  </div>
+                </div>
+
+                <!-- texto / cta / capture / list: el mensaje -->
+                <template v-if="['text', 'cta', 'capture', 'list'].includes(block.type)">
+                  <Textarea v-model="block.text" rows="3" auto-resize fluid class="!text-sm" placeholder="Escribe el mensaje…" />
+                  <div class="flex flex-wrap items-center gap-1">
+                    <button
+                      v-for="variable in availableVariables"
+                      :key="variable"
+                      type="button"
+                      class="rounded bg-teal-600/10 px-1.5 py-0.5 text-[10px] font-semibold text-teal-700 hover:bg-teal-600/20"
+                      :title="`{{${variable}}}`"
+                      @click="insertVariableInto(block, variable)"
+                    >
+                      {{ variable.split('.').pop() }}
+                    </button>
+                  </div>
+                </template>
+
+                <!-- botones del bloque de texto -->
+                <template v-if="block.type === 'text'">
+                  <div
+                    v-for="(button, btnIndex) in block.buttons ?? []"
+                    :key="button.id"
+                    class="flex items-center gap-1"
+                  >
+                    <InputText v-model="button.title" placeholder="Título del botón (máx. 20)" :maxlength="20" fluid class="!text-sm" />
+                    <Button icon="pi pi-times" text size="small" severity="secondary" @click="removeBlockOption(block, 'buttons', btnIndex)" />
+                  </div>
+                  <button
+                    v-if="(block.buttons?.length ?? 0) < 3 && !hasTerminalBlock"
+                    type="button"
+                    class="rounded-lg border border-dashed border-slate-300 py-1.5 text-center text-xs text-slate-500 hover:border-teal-400 hover:text-teal-600"
+                    @click="addBlockOption(block, 'buttons')"
+                  >
+                    + Añadir botón
+                  </button>
+                </template>
+
+                <!-- cta -->
+                <template v-if="block.type === 'cta'">
+                  <InputText v-model="block.url" placeholder="https://…" fluid class="!text-sm" />
+                  <InputText v-model="block.button" placeholder="Texto del botón" :maxlength="20" fluid class="!text-sm" />
+                </template>
+
+                <!-- multimedia -->
+                <template v-if="['image', 'video', 'audio', 'document'].includes(block.type)">
+                  <InputText v-model="block.url" placeholder="URL pública (Meta la descarga)" fluid class="!text-sm" />
+                  <img
+                    v-if="block.type === 'image' && (block.url ?? '').startsWith('http')"
+                    :src="block.url"
+                    class="max-h-24 w-full rounded-lg object-cover"
+                    @error="($event.target as HTMLImageElement).style.display = 'none'"
+                  />
+                  <InputText v-if="block.type !== 'audio'" v-model="block.caption" placeholder="Descripción (opcional)" fluid class="!text-sm" />
+                  <InputText v-if="block.type === 'document'" v-model="block.filename" placeholder="nombre.pdf" fluid class="!text-sm" />
+                </template>
+
+                <!-- retraso corto -->
+                <div v-if="block.type === 'wait'" class="flex items-center gap-2">
+                  <InputNumber v-model="block.seconds" :min="1" :max="15" class="w-24" fluid />
+                  <span class="text-xs text-slate-500">segundos entre los textos</span>
+                </div>
+
+                <!-- captura -->
+                <template v-if="block.type === 'capture'">
+                  <InputText v-model="block.field" placeholder="Campo destino (ej: correo)" fluid class="!text-sm font-mono" />
+                  <p class="text-[10px] text-slate-400">La siguiente respuesta libre queda guardada en ese campo del contacto.</p>
+                </template>
+
+                <!-- lista -->
+                <template v-if="block.type === 'list'">
+                  <InputText v-model="block.button" placeholder="Botón que abre la lista" :maxlength="20" fluid class="!text-sm" />
+                  <div
+                    v-for="(row, rowIndex) in block.rows ?? []"
+                    :key="row.id"
+                    class="flex flex-col gap-1 rounded-lg border border-slate-100 p-1.5"
+                  >
+                    <div class="flex items-center gap-1">
+                      <InputText v-model="row.title" :placeholder="`Opción ${rowIndex + 1} (máx. 24)`" :maxlength="24" fluid class="!text-sm" />
+                      <Button
+                        icon="pi pi-times"
+                        text
+                        size="small"
+                        severity="secondary"
+                        :disabled="(block.rows?.length ?? 0) <= 1"
+                        @click="removeBlockOption(block, 'rows', rowIndex)"
+                      />
+                    </div>
+                    <InputText v-model="row.description" placeholder="Descripción (opcional)" :maxlength="72" fluid class="!text-xs" />
+                  </div>
+                  <button
+                    v-if="(block.rows?.length ?? 0) < 10"
+                    type="button"
+                    class="rounded-lg border border-dashed border-slate-300 py-1.5 text-center text-xs text-slate-500 hover:border-teal-400 hover:text-teal-600"
+                    @click="addBlockOption(block, 'rows')"
+                  >
+                    + Añadir opción
+                  </button>
+                </template>
+              </div>
+
+              <!-- añadir bloques (el catalogo de ManyChat) -->
+              <div class="flex flex-col gap-1.5">
+                <p class="text-[11px] text-slate-500">Añade uno de los bloques de contenido:</p>
+                <button
+                  v-for="item in BLOCK_CATALOG.filter((b) => (showMoreBlocks ? !b.primary : b.primary))"
+                  :key="item.type"
+                  type="button"
+                  class="flex items-start gap-2.5 rounded-xl border border-dashed border-slate-300 px-3 py-2 text-left transition-colors hover:border-teal-400 hover:bg-teal-50/40 disabled:cursor-not-allowed disabled:opacity-40"
+                  :disabled="
+                    (selectedNode.data!.def.blocks?.length ?? 0) >= 10 ||
+                    (['list', 'capture'].includes(item.type) && hasTerminalBlock) ||
+                    (item.type === 'capture' && hasButtonBlocks)
+                  "
+                  @click="addBlock(item.type)"
+                >
+                  <i :class="item.icon" class="mt-0.5 text-sm text-slate-400" />
+                  <span class="min-w-0">
+                    <span class="block text-[13px] font-medium text-slate-700">{{ item.label }}</span>
+                    <span class="block text-[11px] leading-tight text-slate-400">{{ item.description }}</span>
+                  </span>
+                </button>
+                <button
+                  type="button"
+                  class="flex items-center gap-2.5 rounded-xl border border-dashed border-slate-300 px-3 py-2 text-left text-[13px] font-medium text-slate-700 hover:border-teal-400 hover:bg-teal-50/40"
+                  @click="showMoreBlocks = !showMoreBlocks"
+                >
+                  <i :class="showMoreBlocks ? 'pi pi-arrow-left' : 'pi pi-ellipsis-h'" class="text-sm text-slate-400" />
+                  {{ showMoreBlocks ? 'Volver' : 'Más' }}
+                  <span v-if="!showMoreBlocks" class="block text-[11px] font-normal text-slate-400">Ver todas las opciones disponibles</span>
+                </button>
+              </div>
+
+              <p class="rounded-xl border border-dashed border-teal-300 py-2 text-center text-xs font-medium text-teal-600">
+                Elegir Siguiente Paso: conecta el punto «Siguiente paso» del nodo
+              </p>
+            </template>
+
             <!-- texto (nodos que envían) -->
             <div
               v-if="['message', 'buttons', 'cta_url', 'list', 'capture'].includes(selectedNode.data!.def.type)"

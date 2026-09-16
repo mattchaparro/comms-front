@@ -44,6 +44,21 @@ const bubbleTokens = computed(() => {
   return text ? tokenize(text) : []
 })
 
+// El nodo `blocks` pinta su pila: cada bloque como lo veria la clienta.
+const blockViews = computed(() =>
+  (props.data.def.blocks ?? []).map((block) => ({
+    block,
+    tokens: tokenize(block.text ?? ''),
+  })),
+)
+
+const BLOCK_MEDIA_ICONS: Record<string, string> = {
+  image: 'pi pi-image',
+  video: 'pi pi-video',
+  audio: 'pi pi-volume-up',
+  document: 'pi pi-paperclip',
+}
+
 // Nombre corto de la variable para el pill: contact.fields.ciudad -> ciudad.
 function pillLabel(path: string): string {
   const parts = path.split('.')
@@ -149,7 +164,9 @@ function handleColor(handleId: string): string {
       :style="{ backgroundColor: meta.headerBg }"
     >
       <i :class="meta.icon" class="text-xs" :style="{ color: meta.accent }" />
-      <span class="text-[13px] font-semibold text-slate-800">{{ meta.label }}</span>
+      <span class="truncate text-[13px] font-semibold text-slate-800">
+        {{ data.def.title || meta.label }}
+      </span>
       <span
         v-if="data.isStart"
         class="ml-auto rounded-full px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-white"
@@ -159,7 +176,123 @@ function handleColor(handleId: string): string {
       </span>
     </div>
 
-    <div class="px-3 py-2">
+    <!-- nodo blocks: la pila de bloques, como la veria la clienta -->
+    <div v-if="data.def.type === 'blocks'" class="flex flex-col gap-1.5 px-3 py-2">
+      <template v-for="(view, index) in blockViews" :key="index">
+        <!-- pausa corta -->
+        <div
+          v-if="view.block.type === 'wait'"
+          class="self-center rounded-full bg-slate-100 px-2 py-0.5 text-[10px] text-slate-500"
+        >
+          <i class="pi pi-clock mr-1 text-[9px]" />{{ view.block.seconds }}s
+        </div>
+
+        <!-- multimedia -->
+        <div
+          v-else-if="['image', 'video', 'audio', 'document'].includes(view.block.type)"
+          class="overflow-hidden rounded-lg rounded-tl-sm bg-[#f0f2f5]"
+        >
+          <img
+            v-if="view.block.type === 'image' && (view.block.url ?? '').startsWith('http')"
+            :src="view.block.url"
+            class="max-h-20 w-full object-cover"
+            @error="($event.target as HTMLImageElement).style.display = 'none'"
+          />
+          <div v-else class="flex h-12 items-center justify-center text-slate-300">
+            <i :class="BLOCK_MEDIA_ICONS[view.block.type]" class="text-lg" />
+          </div>
+          <p v-if="view.block.caption" class="px-2 py-1 text-[11px] text-slate-700">
+            {{ view.block.caption }}
+          </p>
+        </div>
+
+        <!-- texto / cta / captura / lista -->
+        <div v-else class="flex flex-col gap-1">
+          <div class="rounded-lg rounded-tl-sm bg-[#f0f2f5] px-2.5 py-1.5">
+            <p v-if="view.tokens.length" class="line-clamp-4 text-xs leading-relaxed text-slate-800">
+              <template v-for="(token, tIndex) in view.tokens" :key="tIndex">
+                <span
+                  v-if="token.kind === 'var'"
+                  class="mx-0.5 inline-block rounded bg-teal-600/10 px-1 py-px align-baseline text-[10px] font-semibold leading-tight text-teal-700"
+                  :title="`{{${token.value}}}`"
+                >
+                  {{ pillLabel(token.value) }}
+                </span>
+                <template v-else>{{ token.value }}</template>
+              </template>
+            </p>
+            <p v-else class="text-xs italic text-slate-400">Sin texto todavía…</p>
+            <p v-if="view.block.type === 'capture'" class="mt-0.5 text-[10px] text-slate-500">
+              <i class="pi pi-inbox mr-1 text-[9px]" />Guarda en
+              <span class="rounded bg-white px-1 font-mono">{{ view.block.field || '¿?' }}</span>
+            </p>
+          </div>
+          <p v-if="view.block.type === 'cta'" class="truncate text-center text-[10px] text-cyan-700">
+            <i class="pi pi-external-link mr-1 text-[9px]" />{{ view.block.button || 'Abrir' }}
+          </p>
+          <p v-if="view.block.type === 'list'" class="text-center text-[10px] text-slate-400">
+            <i class="pi pi-bars mr-1 text-[9px]" />{{ view.block.button || 'Ver opciones' }}
+          </p>
+
+          <!-- botones / filas de este bloque, conectables -->
+          <div
+            v-for="option in [...(view.block.buttons ?? []), ...(view.block.rows ?? [])]"
+            :key="option.id"
+            class="relative"
+          >
+            <div
+              class="rounded-lg border border-slate-200 bg-white py-1 pr-4 text-center text-[11px] font-medium"
+              :style="{ color: meta.accent }"
+            >
+              {{ option.title || '(opción)' }}
+            </div>
+            <Handle
+              :id="`${view.block.rows ? 'row' : 'btn'}:${option.id}`"
+              type="source"
+              :position="Position.Right"
+              class="!h-3 !w-3 !border-2 !bg-white"
+              :style="{
+                borderColor: meta.accent,
+                position: 'absolute',
+                right: '-18px',
+                top: '50%',
+                transform: 'translateY(-50%)',
+              }"
+            />
+          </div>
+        </div>
+      </template>
+
+      <div v-if="effects.length" class="flex flex-wrap gap-1">
+        <span
+          v-for="effect in effects"
+          :key="effect"
+          class="rounded bg-teal-50 px-1.5 py-0.5 text-[10px] font-medium text-teal-700"
+        >
+          {{ effect }}
+        </span>
+      </div>
+
+      <!-- Elegir Siguiente Paso -->
+      <div class="relative -mx-3 mt-0.5 border-t border-slate-100 pt-1.5">
+        <p class="pr-5 text-right text-[10px] text-slate-400">Siguiente paso</p>
+        <Handle
+          id="next"
+          type="source"
+          :position="Position.Right"
+          class="!h-3 !w-3 !border-2 !bg-white"
+          :style="{
+            borderColor: meta.accent,
+            position: 'absolute',
+            right: '-6px',
+            top: '60%',
+            transform: 'translateY(-50%)',
+          }"
+        />
+      </div>
+    </div>
+
+    <div v-else class="px-3 py-2">
       <!-- contenido tipo chat: la burbuja como la veria la clienta -->
       <template v-if="isChat">
         <div class="rounded-lg rounded-tl-sm bg-[#f0f2f5] px-2.5 py-1.5">
@@ -242,7 +375,7 @@ function handleColor(handleId: string): string {
     </div>
 
     <!-- filas de opciones como botones de WhatsApp (cada una conecta) -->
-    <div v-if="isOptionRows" class="flex flex-col gap-1 px-3 pb-2">
+    <div v-if="data.def.type !== 'blocks' && isOptionRows" class="flex flex-col gap-1 px-3 pb-2">
       <div v-for="handle in handles" :key="handle.id" class="relative">
         <div
           class="rounded-lg border border-slate-200 bg-white py-1 pr-4 text-center text-[11px] font-medium"
@@ -267,7 +400,10 @@ function handleColor(handleId: string): string {
     </div>
 
     <!-- salidas simples / de logica en el pie -->
-    <div v-else class="flex flex-col gap-1.5 border-t border-slate-100 py-2">
+    <div
+      v-else-if="data.def.type !== 'blocks'"
+      class="flex flex-col gap-1.5 border-t border-slate-100 py-2"
+    >
       <div v-for="handle in handles" :key="handle.id" class="relative flex items-center justify-end pr-4">
         <span
           v-if="data.def.type === 'condition'"

@@ -41,6 +41,15 @@ export const NODE_CATALOG: Record<
   FlowNodeType,
   { label: string; icon: string; accent: string; headerBg: string; description: string }
 > = {
+  blocks: {
+    // EL paso de contenido (patron ManyChat "Enviar mensaje"): una pila de
+    // bloques - texto+botones, imagen, pausa corta, captura, lista...
+    label: 'Enviar mensaje',
+    icon: 'pi pi-comments',
+    accent: '#16a34a',
+    headerBg: '#dcfce7',
+    description: 'Texto, botones, imagen, pausas y más — en un solo paso.',
+  },
   message: {
     // Verde WhatsApp: el nodo que envia un mensaje se ve como el canal.
     label: 'Mensaje',
@@ -143,6 +152,22 @@ export function definitionToGraph(definition: FlowDefinition): {
         title,
         ...(description ? { description } : {}),
       }))
+    if (def.blocks)
+      def.blocks = def.blocks.map((block) => ({
+        ...block,
+        ...(block.buttons
+          ? { buttons: block.buttons.map(({ id: bid, title }) => ({ id: bid, title })) }
+          : {}),
+        ...(block.rows
+          ? {
+              rows: block.rows.map(({ id: rid, title, description }) => ({
+                id: rid,
+                title,
+                ...(description ? { description } : {}),
+              })),
+            }
+          : {}),
+      }))
     return {
       id,
       type: 'flow',
@@ -169,6 +194,18 @@ export function definitionToGraph(definition: FlowDefinition): {
     for (const row of node.rows ?? []) {
       if (row.next && definition.nodes[row.next]) {
         edges.push(makeEdge(id, `row:${row.id}`, row.next))
+      }
+    }
+    for (const block of node.blocks ?? []) {
+      for (const button of block.buttons ?? []) {
+        if (button.next && definition.nodes[button.next]) {
+          edges.push(makeEdge(id, `btn:${button.id}`, button.next))
+        }
+      }
+      for (const row of block.rows ?? []) {
+        if (row.next && definition.nodes[row.next]) {
+          edges.push(makeEdge(id, `row:${row.id}`, row.next))
+        }
       }
     }
     for (const branch of ['then', 'else'] as const) {
@@ -252,6 +289,38 @@ export function graphToDefinition(nodes: Node[], edges: Edge[]): FlowDefinition 
         return next ? { weight: branch.weight, next } : { weight: branch.weight }
       })
       delete def.next
+    } else if (def.type === 'blocks') {
+      def.blocks = (def.blocks ?? []).map((block) => ({
+        ...block,
+        ...(block.buttons
+          ? {
+              buttons: block.buttons.map((button) => {
+                const next = outgoing.get(`${node.id}|btn:${button.id}`)
+                return next
+                  ? { id: button.id, title: button.title, next }
+                  : { id: button.id, title: button.title }
+              }),
+            }
+          : {}),
+        ...(block.rows
+          ? {
+              rows: block.rows.map((row) => {
+                const next = outgoing.get(`${node.id}|row:${row.id}`)
+                const base = {
+                  id: row.id,
+                  title: row.title,
+                  ...(row.description ? { description: row.description } : {}),
+                }
+                return next ? { ...base, next } : base
+              }),
+            }
+          : {}),
+      }))
+      // El "Elegir Siguiente Paso": aplica cuando el nodo no queda esperando
+      // (y es el fallback de continuacion del bloque capture).
+      const next = outgoing.get(`${node.id}|next`)
+      if (next) def.next = next
+      else delete def.next
     } else if (def.type === 'list') {
       def.rows = (def.rows ?? []).map((row) => {
         const next = outgoing.get(`${node.id}|row:${row.id}`)
@@ -311,6 +380,19 @@ export function sourceHandles(def: FlowNodeDef): { id: string; label: string }[]
   if (def.type === 'list') {
     return (def.rows ?? []).map((r) => ({ id: `row:${r.id}`, label: r.title || '(opción)' }))
   }
+  if (def.type === 'blocks') {
+    const handles: { id: string; label: string }[] = []
+    for (const block of def.blocks ?? []) {
+      for (const button of block.buttons ?? []) {
+        handles.push({ id: `btn:${button.id}`, label: button.title || '(botón)' })
+      }
+      for (const row of block.rows ?? []) {
+        handles.push({ id: `row:${row.id}`, label: row.title || '(opción)' })
+      }
+    }
+    handles.push({ id: 'next', label: 'Siguiente paso' })
+    return handles
+  }
   return [{ id: 'next', label: 'Sigue' }]
 }
 
@@ -355,6 +437,8 @@ export function defaultNodeDef(type: FlowNodeType): FlowNodeDef {
       return { type, template: '', language: 'es', params: [] }
     case 'product':
       return { type, text: '', retailer_id: '' }
+    case 'blocks':
+      return { type, blocks: [{ type: 'text', text: '' }] }
   }
 }
 
@@ -379,6 +463,10 @@ export function autoLayout(definition: FlowDefinition): Record<string, { x: numb
       ...(node.buttons ?? []).map((b) => b.next),
       ...(node.branches ?? []).map((b) => b.next),
       ...(node.rows ?? []).map((r) => r.next),
+      ...(node.blocks ?? []).flatMap((block) => [
+        ...(block.buttons ?? []).map((b) => b.next),
+        ...(block.rows ?? []).map((r) => r.next),
+      ]),
     ].filter((t): t is string => Boolean(t && definition.nodes[t]))
     for (const target of targets) {
       if (!depths.has(target)) {

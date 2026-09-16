@@ -14,6 +14,34 @@ export type FlowNodeType =
   | 'capture'
   | 'template'
   | 'product'
+  | 'blocks'
+
+// Un bloque del paso "Enviar mensaje" (nodo `blocks`): cada uno es SU
+// PROPIO mensaje de WhatsApp, enviados seguidos. `wait` = pausa corta
+// entre textos; `capture`/`list` solo al final (esperan respuesta).
+export type BlockType =
+  | 'text'
+  | 'cta'
+  | 'image'
+  | 'video'
+  | 'audio'
+  | 'document'
+  | 'wait'
+  | 'capture'
+  | 'list'
+
+export interface MessageBlock {
+  type: BlockType
+  text?: string
+  buttons?: FlowButton[]
+  url?: string
+  button?: string
+  caption?: string
+  filename?: string
+  seconds?: number
+  field?: string
+  rows?: ListRow[]
+}
 
 export type MediaKind = 'image' | 'video' | 'audio' | 'document'
 
@@ -50,6 +78,10 @@ export interface ConditionWhen {
 
 export interface FlowNodeDef {
   type: FlowNodeType
+  // titulo del paso en el canvas ("Enviar mensaje #1"); el motor lo ignora
+  title?: string
+  // blocks (el paso "Enviar mensaje": pila de bloques de contenido)
+  blocks?: MessageBlock[]
   text?: string
   next?: string | null
   // buttons
