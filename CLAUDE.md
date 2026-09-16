@@ -27,9 +27,13 @@ por rol en `router/navigation.ts` es solo UX). Dominio: connect.nexolu.co.
 - **Rutas del frontend en español** (`/iniciar-sesion`, `/canales`); el
   `name` interno y los identificadores de código en inglés. Textos
   visibles en español.
-- **Tema**: `src/theme/nexoluPreset.ts` (Aura + indigo de marca, el mismo
-  preset de nexolu-pos-front/nexolu-admin-front). No cambiarlo sin
-  decidirlo antes con el usuario.
+- **Tema**: `src/theme/nexoluPreset.ts` — **identidad propia de Connect**
+  (decidida con Alejandro, 15/09/2026): chrome blanco, azul eléctrico
+  primario, wordmark `ConnectWordmark.vue`. Ya **no** comparte el indigo
+  de nexolu-pos-front/nexolu-admin-front; el referente visual son los
+  builders de automatización de conversaciones (ManyChat), sin copiar
+  marca ajena. No volver al indigo ni cambiar la identidad sin decidirlo
+  con el usuario.
 - **Sin capa Nexolú UI**: PrimeVue directo, igual que nexolu-admin-front.
 - **Tipos espejo**: `src/types/*.ts` reflejan schemas de
   `nexolu-comms-api` — mantener sincronizados y decir de qué archivo
