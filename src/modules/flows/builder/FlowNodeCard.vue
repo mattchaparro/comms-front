@@ -32,6 +32,9 @@ const summary = computed(() => {
     const labels = { image: 'Imagen', video: 'Video', audio: 'Audio', document: 'Archivo' }
     return def.caption || labels[def.kind ?? 'image']
   }
+  if (def.type === 'template') {
+    return def.template ? `Envía «${def.template}»` : 'Sin plantilla elegida…'
+  }
   return def.text || 'Sin texto todavía…'
 })
 
@@ -71,7 +74,9 @@ const effects = computed(() => {
 })
 
 const isBubble = computed(() =>
-  ['message', 'buttons', 'cta_url', 'list', 'capture', 'media'].includes(props.data.def.type),
+  ['message', 'buttons', 'cta_url', 'list', 'capture', 'media', 'template'].includes(
+    props.data.def.type,
+  ),
 )
 </script>
 
@@ -129,6 +134,13 @@ const isBubble = computed(() =>
 
       <p v-if="data.def.type === 'capture'" class="mt-1 truncate text-[11px] font-medium text-slate-600">
         <i class="pi pi-inbox mr-1 text-[10px]" />Guarda en: {{ data.def.field || '(sin campo)' }}
+      </p>
+
+      <p v-if="data.def.type === 'template'" class="mt-1 text-[11px] text-fuchsia-700">
+        <i class="pi pi-globe mr-1 text-[10px]" />{{ data.def.language || 'es' }}
+        <span v-if="data.def.params?.length" class="ml-1 text-slate-500">
+          · {{ data.def.params.length }} variable(s)
+        </span>
       </p>
 
       <div v-if="effects.length" class="mt-1.5 flex flex-wrap gap-1">

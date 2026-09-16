@@ -12,6 +12,7 @@ export type FlowNodeType =
   | 'media'
   | 'list'
   | 'capture'
+  | 'template'
 
 export type MediaKind = 'image' | 'video' | 'audio' | 'document'
 
@@ -71,6 +72,11 @@ export interface FlowNodeDef {
   rows?: ListRow[]
   // capture (guarda el siguiente texto libre en contact.fields[field])
   field?: string
+  // template (plantilla aprobada de Meta: lo UNICO que entrega fuera de la
+  // ventana de 24h; params llena {{1}}, {{2}}... del cuerpo)
+  template?: string
+  language?: string
+  params?: string[]
   // efectos sobre el contacto (cualquier nodo)
   add_tags?: string[]
   remove_tags?: string[]

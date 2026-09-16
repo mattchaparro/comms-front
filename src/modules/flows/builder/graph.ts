@@ -105,6 +105,13 @@ export const NODE_CATALOG: Record<
     headerBg: '#e2e8f0',
     description: 'Pregunta y guarda la respuesta en un campo del contacto.',
   },
+  template: {
+    label: 'Plantilla',
+    icon: 'pi pi-file-check',
+    accent: '#c026d3',
+    headerBg: '#fae8ff',
+    description: 'Plantilla aprobada: lo único que entrega fuera de las 24h.',
+  },
 }
 
 // --- definición -> grafo ------------------------------------------------------
@@ -260,6 +267,8 @@ export function graphToDefinition(nodes: Node[], edges: Edge[]): FlowDefinition 
     if (!def.add_tags?.length) delete def.add_tags
     if (!def.remove_tags?.length) delete def.remove_tags
     if (!def.set_fields || Object.keys(def.set_fields).length === 0) delete def.set_fields
+    if (def.params && def.params.filter((p) => p.trim()).length === 0) delete def.params
+    else if (def.params) def.params = def.params.map((p) => p.trim())
 
     result.nodes[node.id] = def
     result.ui!.positions![node.id] = {
@@ -335,6 +344,8 @@ export function defaultNodeDef(type: FlowNodeType): FlowNodeDef {
       }
     case 'capture':
       return { type, text: '', field: '' }
+    case 'template':
+      return { type, template: '', language: 'es', params: [] }
   }
 }
 

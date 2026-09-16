@@ -28,6 +28,7 @@ import {
   fetchTemplates,
   syncTemplates,
 } from '../services/templatesService'
+import TemplatePreview from '../components/TemplatePreview.vue'
 
 const queryClient = useQueryClient()
 const toast = useToast()
@@ -178,6 +179,14 @@ function bodyPreview(template: WhatsAppTemplate): string {
   return typeof body?.text === 'string' ? body.text : '—'
 }
 
+// --- detalle ---
+
+const detail = ref<WhatsAppTemplate | null>(null)
+
+function openDetail(template: WhatsAppTemplate): void {
+  detail.value = template
+}
+
 const statusSeverity: Record<string, 'success' | 'danger' | 'warn' | 'info' | 'secondary'> = {
   APPROVED: 'success',
   REJECTED: 'danger',
@@ -220,7 +229,15 @@ const statusSeverity: Record<string, 'success' | 'danger' | 'warn' | 'info' | 's
       />
     </div>
 
-    <DataTable :value="templates ?? []" :loading="isLoading" size="small" striped-rows>
+    <DataTable
+      :value="templates ?? []"
+      :loading="isLoading"
+      size="small"
+      striped-rows
+      selection-mode="single"
+      :row-class="() => 'cursor-pointer'"
+      @row-click="openDetail($event.data as WhatsAppTemplate)"
+    >
       <Column field="app_id" header="App" />
       <Column field="name" header="Nombre" />
       <Column field="language" header="Idioma" />
@@ -250,13 +267,20 @@ const statusSeverity: Record<string, 'success' | 'danger' | 'warn' | 'info' | 's
       </Column>
       <Column header="">
         <template #body="{ data: row }">
-          <div class="flex justify-end">
+          <div class="flex justify-end gap-1">
+            <Button
+              icon="pi pi-eye"
+              text
+              severity="secondary"
+              title="Ver detalle"
+              @click.stop="openDetail(row)"
+            />
             <Button
               icon="pi pi-trash"
               text
               severity="danger"
               title="Eliminar (todos los idiomas)"
-              @click="confirmDelete(row)"
+              @click.stop="confirmDelete(row)"
             />
           </div>
         </template>
@@ -267,6 +291,56 @@ const statusSeverity: Record<string, 'success' | 'danger' | 'warn' | 'info' | 's
         </p>
       </template>
     </DataTable>
+
+    <!-- Detalle: la plantilla como la ve la clienta + la ficha técnica -->
+    <Dialog
+      :visible="detail !== null"
+      modal
+      :header="detail ? `${detail.name} · ${detail.language}` : ''"
+      :draggable="false"
+      class="w-full max-w-2xl"
+      @update:visible="detail = null"
+    >
+      <div v-if="detail" class="grid gap-6 sm:grid-cols-2">
+        <div class="rounded-xl bg-[#e5ddd5] p-4">
+          <p class="mb-2 text-[11px] font-semibold uppercase tracking-wide text-slate-500">
+            Así la ve la clienta
+          </p>
+          <TemplatePreview :components="detail.components" />
+        </div>
+
+        <div class="flex flex-col gap-2 text-sm">
+          <p class="text-[11px] font-semibold uppercase tracking-wide text-slate-400">Ficha</p>
+          <div class="grid grid-cols-[auto_1fr] gap-x-3 gap-y-1.5">
+            <span class="text-slate-400">Estado</span>
+            <span>
+              <Tag :value="detail.status" :severity="statusSeverity[detail.status] ?? 'secondary'" />
+            </span>
+            <span class="text-slate-400">App</span>
+            <span class="font-medium text-slate-700">{{ detail.app_id }}</span>
+            <span class="text-slate-400">Categoría</span>
+            <span class="text-slate-700">{{ detail.category }}</span>
+            <span class="text-slate-400">Calidad</span>
+            <span class="text-slate-700">{{ detail.quality_score ?? '—' }}</span>
+            <span class="text-slate-400">WABA</span>
+            <span class="break-all font-mono text-xs text-slate-600">{{ detail.waba_id }}</span>
+            <span class="text-slate-400">ID en Meta</span>
+            <span class="break-all font-mono text-xs text-slate-600">{{ detail.meta_template_id ?? '—' }}</span>
+            <span class="text-slate-400">Sincronizada</span>
+            <span class="text-slate-700">{{ detail.last_synced_at ? formatDateTime(detail.last_synced_at) : '—' }}</span>
+            <span class="text-slate-400">Creada</span>
+            <span class="text-slate-700">{{ formatDateTime(detail.created_at) }}</span>
+          </div>
+          <Message v-if="detail.reason" severity="warn" :closable="false" class="mt-2">
+            Meta dice: {{ detail.reason }}
+          </Message>
+          <p class="mt-auto pt-3 text-[11px] leading-snug text-slate-400">
+            Las variables <code v-pre>{{1}}</code>, <code v-pre>{{2}}</code>… se llenan al enviar
+            (o desde el nodo Plantilla del constructor de flujos).
+          </p>
+        </div>
+      </div>
+    </Dialog>
 
     <Dialog
       v-model:visible="dialogVisible"

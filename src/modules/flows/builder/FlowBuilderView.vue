@@ -22,11 +22,15 @@ import { computed, nextTick, ref, watch, type Ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 
 import { fetchCommsApps } from '@/modules/commsCore/services/commsCoreService'
+import { fetchTemplates } from '@/modules/templates/services/templatesService'
+import TemplatePreview from '@/modules/templates/components/TemplatePreview.vue'
 import ConnectWordmark from '@/ui/ConnectWordmark.vue'
 import type { FlowDefinition, FlowNodeDef, FlowNodeType } from '@/types/flows'
+import type { WhatsAppTemplate } from '@/types/templates'
 
 import { createFlow, fetchFlows, updateFlow } from '../services/flowsService'
 import FlowNodeCard from './FlowNodeCard.vue'
+import SimulatorPanel from './SimulatorPanel.vue'
 import TriggerNodeCard from './TriggerNodeCard.vue'
 import {
   NODE_CATALOG,
@@ -52,6 +56,13 @@ const { data: apps } = useQuery({ queryKey: ['comms-apps'] as const, queryFn: fe
 const appOptions = computed(() => (apps.value ?? []).map((app) => app.app_id))
 
 const { data: flows } = useQuery({ queryKey: ['flows'] as const, queryFn: () => fetchFlows() })
+
+// Plantillas del espejo, para el nodo `template` (elegir por nombre y
+// previsualizar el cuerpo real).
+const { data: allTemplates } = useQuery({
+  queryKey: ['whatsapp-templates'] as const,
+  queryFn: () => fetchTemplates(),
+})
 
 // --- estado del grafo ---------------------------------------------------------
 
@@ -540,6 +551,80 @@ const setFieldsText = computed({
   },
 })
 
+// --- vista previa (simulador) -------------------------------------------------
+
+const simDefinition = ref<FlowDefinition | null>(null)
+
+function toggleSimulator(): void {
+  // Foto de la definicion al abrir: editar el canvas no reinicia el ensayo
+  // a mitad de camino; "Probar" de nuevo (o Reiniciar) toma los cambios.
+  simDefinition.value = simDefinition.value
+    ? null
+    : (JSON.parse(JSON.stringify(graphToDefinition(nodes.value, edges.value))) as FlowDefinition)
+}
+
+// Las {{variables}} que usa la definicion (menos contact.*): el hint del
+// panel para llenar el contexto del ensayo.
+const simVariablesHint = computed(() => {
+  if (!simDefinition.value) return []
+  const found = new Set<string>()
+  for (const match of JSON.stringify(simDefinition.value).matchAll(/\{\{\s*([a-zA-Z0-9_.]+)\s*\}\}/g)) {
+    if (!match[1].startsWith('contact.')) found.add(match[1])
+  }
+  return [...found]
+})
+
+// --- nodo template ------------------------------------------------------------
+
+const templateOptions = computed(() =>
+  (allTemplates.value ?? [])
+    .filter((t) => !metaApp.value || t.app_id === metaApp.value)
+    .map((t) => ({
+      label: `${t.name} · ${t.language}${t.status === 'APPROVED' ? '' : ` (${t.status})`}`,
+      value: `${t.name}|${t.language}`,
+      template: t,
+    })),
+)
+
+const selectedTemplate = computed<WhatsAppTemplate | null>(() => {
+  const def = selectedNode.value?.data?.def
+  if (def?.type !== 'template' || !def.template) return null
+  return (
+    (allTemplates.value ?? []).find(
+      (t) => t.name === def.template && t.language === (def.language || 'es'),
+    ) ?? null
+  )
+})
+
+function templateParamCount(template: WhatsAppTemplate): number {
+  const body = template.components.find((c) => String(c.type).toUpperCase() === 'BODY')
+  const text = typeof body?.text === 'string' ? body.text : ''
+  let max = 0
+  for (const match of text.matchAll(/\{\{(\d+)\}\}/g)) max = Math.max(max, Number(match[1]))
+  return max
+}
+
+const templateChoice = computed({
+  get(): string | null {
+    const def = selectedNode.value?.data?.def
+    return def?.template ? `${def.template}|${def.language || 'es'}` : null
+  },
+  set(value: string | null) {
+    const def = selectedNode.value?.data?.def
+    if (!def || !value) return
+    const [name, language] = value.split('|')
+    def.template = name
+    def.language = language
+    const chosen = (allTemplates.value ?? []).find(
+      (t) => t.name === name && t.language === language,
+    )
+    const count = chosen ? templateParamCount(chosen) : 0
+    const params = [...(def.params ?? [])]
+    params.length = count
+    def.params = params.map((p) => p ?? '')
+  },
+})
+
 function splitList(value: string): string[] {
   return value
     .split(',')
@@ -670,6 +755,14 @@ const menuTypes = Object.entries(NODE_CATALOG) as [
           @click="selectedId = TRIGGER_NODE_ID"
         />
         <Button
+          :label="simDefinition ? 'Cerrar prueba' : 'Probar'"
+          :icon="simDefinition ? 'pi pi-stop-circle' : 'pi pi-play-circle'"
+          size="small"
+          severity="secondary"
+          :outlined="!simDefinition"
+          @click="toggleSimulator"
+        />
+        <Button
           label="Guardar"
           icon="pi pi-check"
           size="small"
@@ -788,6 +881,15 @@ const menuTypes = Object.entries(NODE_CATALOG) as [
           Cancelar
         </button>
       </div>
+
+      <!-- Vista previa (derecha): el chat simulado del flujo -->
+      <SimulatorPanel
+        v-if="simDefinition"
+        :definition="simDefinition"
+        :templates="allTemplates ?? []"
+        :variables-hint="simVariablesHint"
+        @close="simDefinition = null"
+      />
 
       <!-- Panel flotante de edición (izquierda, patrón ManyChat) -->
       <aside
@@ -944,6 +1046,57 @@ const menuTypes = Object.entries(NODE_CATALOG) as [
                 continúa. Luego puedes usarlo como <code v-pre>{{contact.fields.tu_campo}}</code>.
               </p>
             </div>
+
+            <!-- template -->
+            <template v-if="selectedNode.data!.def.type === 'template'">
+              <div class="flex flex-col gap-1.5">
+                <label class="text-xs font-medium text-slate-600">Plantilla aprobada</label>
+                <Select
+                  v-model="templateChoice"
+                  :options="templateOptions"
+                  option-label="label"
+                  option-value="value"
+                  placeholder="Elige del espejo de Meta"
+                  filter
+                  fluid
+                  class="!text-sm"
+                />
+                <p v-if="!templateOptions.length" class="text-[11px] text-amber-600">
+                  No hay plantillas en el espejo para esta app — créalas o sincroniza en la
+                  pantalla Plantillas.
+                </p>
+              </div>
+              <div
+                v-if="(selectedNode.data!.def.params?.length ?? 0) > 0"
+                class="flex flex-col gap-1.5"
+              >
+                <label class="text-xs font-medium text-slate-600">
+                  Variables del cuerpo
+                  <span class="font-normal text-slate-400">(admiten <code v-pre>{{contexto}}</code>)</span>
+                </label>
+                <InputText
+                  v-for="(_, index) in selectedNode.data!.def.params"
+                  :key="index"
+                  v-model="selectedNode.data!.def.params![index]"
+                  :placeholder="`{{${index + 1}}}`"
+                  fluid
+                  class="!text-sm"
+                />
+              </div>
+              <div v-if="selectedTemplate" class="rounded-xl bg-[#e5ddd5] p-3">
+                <p class="mb-2 text-[10px] font-semibold uppercase tracking-wide text-slate-500">
+                  Vista previa
+                </p>
+                <TemplatePreview
+                  :components="selectedTemplate.components"
+                  :params="selectedNode.data!.def.params"
+                />
+              </div>
+              <p class="text-[11px] leading-snug text-slate-400">
+                La plantilla es lo único que WhatsApp entrega fuera de la ventana de 24 horas — el
+                seguimiento correcto después de una Espera larga.
+              </p>
+            </template>
 
             <!-- random -->
             <div v-if="selectedNode.data!.def.type === 'random'" class="flex flex-col gap-2">
