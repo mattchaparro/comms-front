@@ -13,6 +13,7 @@ export type FlowNodeType =
   | 'list'
   | 'capture'
   | 'template'
+  | 'product'
 
 export type MediaKind = 'image' | 'video' | 'audio' | 'document'
 
@@ -77,6 +78,11 @@ export interface FlowNodeDef {
   template?: string
   language?: string
   params?: string[]
+  // product (catalogo): retailer_id = UN producto (SPM); sections = varios
+  // (MPM, max 10 secciones / 30 productos). El catalog_id lo pone el canal.
+  retailer_id?: string
+  header?: string
+  sections?: { title: string; retailer_ids: string[] }[]
   // efectos sobre el contacto (cualquier nodo)
   add_tags?: string[]
   remove_tags?: string[]

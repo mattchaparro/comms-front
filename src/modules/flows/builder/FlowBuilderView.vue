@@ -14,6 +14,7 @@ import { VueFlow, useVueFlow, type Edge, type NodeMouseEvent } from '@vue-flow/c
 import Button from 'primevue/button'
 import InputNumber from 'primevue/inputnumber'
 import InputText from 'primevue/inputtext'
+import MultiSelect from 'primevue/multiselect'
 import Select from 'primevue/select'
 import SelectButton from 'primevue/selectbutton'
 import Textarea from 'primevue/textarea'
@@ -21,6 +22,7 @@ import { useToast } from 'primevue/usetoast'
 import { computed, nextTick, ref, watch, type Ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 
+import { fetchCatalogItems } from '@/modules/catalog/services/catalogService'
 import { fetchCommsApps } from '@/modules/commsCore/services/commsCoreService'
 import { fetchTemplates } from '@/modules/templates/services/templatesService'
 import TemplatePreview from '@/modules/templates/components/TemplatePreview.vue'
@@ -62,6 +64,13 @@ const { data: flows } = useQuery({ queryKey: ['flows'] as const, queryFn: () => 
 const { data: allTemplates } = useQuery({
   queryKey: ['whatsapp-templates'] as const,
   queryFn: () => fetchTemplates(),
+})
+
+// Items del catalogo, para el nodo `product` (elegir por titulo en vez de
+// escribir retailer_ids a mano).
+const { data: allCatalogItems } = useQuery({
+  queryKey: ['catalog-items'] as const,
+  queryFn: () => fetchCatalogItems(),
 })
 
 // --- estado del grafo ---------------------------------------------------------
@@ -574,6 +583,28 @@ const simVariablesHint = computed(() => {
   return [...found]
 })
 
+// Las variables disponibles para insertar en un texto (patron ManyChat:
+// chips bajo el editor): contact.name, los campos que capturan los nodos
+// `capture` del propio flujo, y toda {{variable}} ya usada en el lienzo.
+const availableVariables = computed(() => {
+  const found = new Set<string>(['contact.name'])
+  for (const node of nodes.value) {
+    const def = node.data && 'def' in node.data ? (node.data as { def?: FlowNodeDef }).def : null
+    if (!def) continue
+    if (def.type === 'capture' && def.field) found.add(`contact.fields.${def.field}`)
+    for (const match of JSON.stringify(def).matchAll(/\{\{\s*([a-zA-Z0-9_.]+)\s*\}\}/g)) {
+      found.add(match[1])
+    }
+  }
+  return [...found]
+})
+
+function insertVariable(path: string): void {
+  const def = selectedNode.value?.data?.def
+  if (!def) return
+  def.text = `${def.text ?? ''}{{${path}}}`
+}
+
 // --- nodo template ------------------------------------------------------------
 
 const templateOptions = computed(() =>
@@ -624,6 +655,47 @@ const templateChoice = computed({
     def.params = params.map((p) => p ?? '')
   },
 })
+
+// --- nodo product -------------------------------------------------------------
+
+const catalogItemOptions = computed(() =>
+  (allCatalogItems.value ?? [])
+    .filter((item) => !metaApp.value || item.app_id === metaApp.value)
+    .map((item) => ({ label: `${item.title} · ${item.retailer_id}`, value: item.retailer_id })),
+)
+
+// Uno (SPM) o varios (MPM): el modo lo define si el nodo tiene `sections`.
+const productMode = computed({
+  get(): 'single' | 'multi' {
+    return selectedNode.value?.data?.def.sections ? 'multi' : 'single'
+  },
+  set(mode: 'single' | 'multi') {
+    const def = selectedNode.value?.data?.def
+    if (!def) return
+    if (mode === 'multi') {
+      def.sections = def.sections ?? [
+        { title: 'Destacados', retailer_ids: def.retailer_id ? [def.retailer_id] : [] },
+      ]
+      delete def.retailer_id
+    } else {
+      def.retailer_id = def.sections?.[0]?.retailer_ids[0] ?? ''
+      delete def.sections
+      delete def.header
+    }
+  },
+})
+
+function addSection(): void {
+  const def = selectedNode.value?.data?.def
+  if (!def?.sections || def.sections.length >= 10) return
+  def.sections.push({ title: '', retailer_ids: [] })
+}
+
+function removeSection(index: number): void {
+  const def = selectedNode.value?.data?.def
+  if (!def?.sections || def.sections.length <= 1) return
+  def.sections.splice(index, 1)
+}
 
 function splitList(value: string): string[] {
   return value
@@ -955,6 +1027,19 @@ const menuTypes = Object.entries(NODE_CATALOG) as [
                 fluid
                 class="!text-sm"
               />
+              <div class="flex flex-wrap items-center gap-1">
+                <span class="text-[10px] uppercase tracking-wide text-slate-400">Insertar:</span>
+                <button
+                  v-for="variable in availableVariables"
+                  :key="variable"
+                  type="button"
+                  class="rounded bg-teal-600/10 px-1.5 py-0.5 text-[10px] font-semibold text-teal-700 transition-colors hover:bg-teal-600/20"
+                  :title="`{{${variable}}}`"
+                  @click="insertVariable(variable)"
+                >
+                  {{ variable.split('.').pop() }}
+                </button>
+              </div>
             </div>
 
             <!-- media -->
@@ -1095,6 +1180,91 @@ const menuTypes = Object.entries(NODE_CATALOG) as [
               <p class="text-[11px] leading-snug text-slate-400">
                 La plantilla es lo único que WhatsApp entrega fuera de la ventana de 24 horas — el
                 seguimiento correcto después de una Espera larga.
+              </p>
+            </template>
+
+            <!-- product -->
+            <template v-if="selectedNode.data!.def.type === 'product'">
+              <div class="flex flex-col gap-1.5">
+                <label class="text-xs font-medium text-slate-600">¿Qué se muestra?</label>
+                <SelectButton
+                  v-model="productMode"
+                  :options="[
+                    { label: 'Un producto', value: 'single' },
+                    { label: 'Varios (menú)', value: 'multi' },
+                  ]"
+                  option-label="label"
+                  option-value="value"
+                  :allow-empty="false"
+                />
+              </div>
+
+              <div v-if="productMode === 'single'" class="flex flex-col gap-1.5">
+                <label class="text-xs font-medium text-slate-600">Producto del catálogo</label>
+                <Select
+                  v-model="selectedNode.data!.def.retailer_id"
+                  :options="catalogItemOptions"
+                  option-label="label"
+                  option-value="value"
+                  placeholder="Elige o escribe el retailer_id"
+                  editable
+                  filter
+                  fluid
+                  class="!text-sm"
+                />
+              </div>
+
+              <template v-else>
+                <div class="flex flex-col gap-1.5">
+                  <label class="text-xs font-medium text-slate-600">Encabezado del menú</label>
+                  <InputText v-model="selectedNode.data!.def.header" placeholder="Catálogo" fluid class="!text-sm" />
+                </div>
+                <div class="flex flex-col gap-2">
+                  <label class="text-xs font-medium text-slate-600">Secciones (máx. 10 / 30 productos)</label>
+                  <div
+                    v-for="(section, index) in selectedNode.data!.def.sections"
+                    :key="index"
+                    class="flex flex-col gap-1 rounded-lg border border-slate-200 p-2"
+                  >
+                    <div class="flex items-center gap-1">
+                      <InputText v-model="section.title" :placeholder="`Sección ${index + 1}`" fluid class="!text-sm" />
+                      <Button
+                        icon="pi pi-times"
+                        text
+                        size="small"
+                        severity="secondary"
+                        :disabled="selectedNode.data!.def.sections!.length <= 1"
+                        @click="removeSection(index)"
+                      />
+                    </div>
+                    <MultiSelect
+                      v-model="section.retailer_ids"
+                      :options="catalogItemOptions"
+                      option-label="label"
+                      option-value="value"
+                      placeholder="Productos de esta sección"
+                      filter
+                      display="chip"
+                      fluid
+                      class="!text-xs"
+                    />
+                  </div>
+                  <Button
+                    v-if="(selectedNode.data!.def.sections?.length ?? 0) < 10"
+                    label="Agregar sección"
+                    icon="pi pi-plus"
+                    text
+                    size="small"
+                    @click="addSection"
+                  />
+                </div>
+              </template>
+              <p v-if="!catalogItemOptions.length" class="text-[11px] text-amber-600">
+                No hay productos sincronizados para esta app — revisa la pantalla Catálogo.
+              </p>
+              <p class="text-[11px] leading-snug text-slate-400">
+                La clienta puede armar el pedido en el chat; te llega por el circuito de pedidos
+                de WhatsApp de siempre.
               </p>
             </template>
 

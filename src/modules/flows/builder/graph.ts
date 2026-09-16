@@ -112,6 +112,13 @@ export const NODE_CATALOG: Record<
     headerBg: '#fae8ff',
     description: 'Plantilla aprobada: lo único que entrega fuera de las 24h.',
   },
+  product: {
+    label: 'Producto(s)',
+    icon: 'pi pi-shopping-bag',
+    accent: '#e11d48',
+    headerBg: '#ffe4e6',
+    description: 'Uno o varios productos del catálogo, comprables en el chat.',
+  },
 }
 
 // --- definición -> grafo ------------------------------------------------------
@@ -346,6 +353,8 @@ export function defaultNodeDef(type: FlowNodeType): FlowNodeDef {
       return { type, text: '', field: '' }
     case 'template':
       return { type, template: '', language: 'es', params: [] }
+    case 'product':
+      return { type, text: '', retailer_id: '' }
   }
 }
 

@@ -164,6 +164,21 @@ export class FlowSimulator {
           })
           nodeId = node.next ?? null
           break
+        case 'product': {
+          if (text) this.events.push({ kind: 'bubble', text })
+          const count = node.sections
+            ? node.sections.reduce((sum, s) => sum + s.retailer_ids.length, 0)
+            : 1
+          this.events.push({
+            kind: 'info',
+            icon: 'pi pi-shopping-bag',
+            text: node.sections
+              ? `Menú de catálogo: ${count} producto(s)`
+              : `Producto: ${node.retailer_id || '(sin elegir)'}`,
+          })
+          nodeId = node.next ?? null
+          break
+        }
         case 'condition': {
           const result = evaluateCondition(node, context)
           this.events.push({

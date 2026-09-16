@@ -1,10 +1,11 @@
 <script setup lang="ts">
 // La cajita de UN nodo en el canvas del builder, con la identidad propia
-// de Connect: tarjeta blanca, franja pastel con texto oscuro por
-// categoria, y el texto del mensaje renderizado como burbuja de chat.
-// Entrada por la izquierda, salidas por la derecha: una por botón en
-// `buttons`, Sí/No en `condition`, una sola en el resto. La edición vive
-// en el panel lateral del FlowBuilderView.
+// de Connect y el lenguaje visual de ManyChat: el mensaje se ve como una
+// burbuja de chat REAL, las {{variables}} salen como pills (no llaves
+// crudas), los botones y las opciones de lista son filas de botón de
+// WhatsApp con su punto de conexión propio, y la imagen del nodo
+// multimedia se previsualiza en miniatura. La edición vive en el panel
+// lateral del FlowBuilderView.
 import { Handle, Position } from '@vue-flow/core'
 import { computed } from 'vue'
 
@@ -20,30 +21,42 @@ const props = defineProps<{
 const meta = computed(() => NODE_CATALOG[props.data.def.type])
 const handles = computed(() => sourceHandles(props.data.def))
 
-const summary = computed(() => {
+// El texto de la burbuja, partido en tokens texto/variable para renderizar
+// {{asi}} como pill (patron ManyChat: la variable es un chip, no llaves).
+type Token = { kind: 'text' | 'var'; value: string }
+
+function tokenize(text: string): Token[] {
+  const tokens: Token[] = []
+  let last = 0
+  for (const match of text.matchAll(/\{\{\s*([a-zA-Z0-9_.]+)\s*\}\}/g)) {
+    if (match.index! > last) tokens.push({ kind: 'text', value: text.slice(last, match.index) })
+    tokens.push({ kind: 'var', value: match[1] })
+    last = match.index! + match[0].length
+  }
+  if (last < text.length) tokens.push({ kind: 'text', value: text.slice(last) })
+  return tokens
+}
+
+const bubbleTokens = computed(() => {
+  const def = props.data.def
+  const text =
+    def.type === 'media' ? (def.caption ?? '') : def.type === 'template' ? '' : (def.text ?? '')
+  return text ? tokenize(text) : []
+})
+
+// Nombre corto de la variable para el pill: contact.fields.ciudad -> ciudad.
+function pillLabel(path: string): string {
+  const parts = path.split('.')
+  return parts[parts.length - 1] || path
+}
+
+const logicSummary = computed(() => {
   const def = props.data.def
   if (def.type === 'delay') return formatMinutes(def.minutes ?? 0)
   if (def.type === 'condition') return describeWhen()
-  if (def.type === 'random') {
-    const count = def.branches?.length ?? 0
-    return `Reparte el tráfico en ${count} ramas`
-  }
-  if (def.type === 'media') {
-    const labels = { image: 'Imagen', video: 'Video', audio: 'Audio', document: 'Archivo' }
-    return def.caption || labels[def.kind ?? 'image']
-  }
-  if (def.type === 'template') {
-    return def.template ? `Envía «${def.template}»` : 'Sin plantilla elegida…'
-  }
-  return def.text || 'Sin texto todavía…'
+  if (def.type === 'random') return `Reparte el tráfico en ${def.branches?.length ?? 0} ramas`
+  return ''
 })
-
-const MEDIA_ICONS = {
-  image: 'pi pi-image',
-  video: 'pi pi-video',
-  audio: 'pi pi-volume-up',
-  document: 'pi pi-paperclip',
-} as const
 
 function formatMinutes(minutes: number): string {
   if (minutes >= 1440 && minutes % 1440 === 0) return `Esperar ${minutes / 1440} día(s)`
@@ -73,11 +86,46 @@ const effects = computed(() => {
   ]
 })
 
-const isBubble = computed(() =>
-  ['message', 'buttons', 'cta_url', 'list', 'capture', 'media', 'template'].includes(
+// Nodos cuyo contenido se dibuja como burbuja de chat.
+const isChat = computed(() =>
+  ['message', 'buttons', 'cta_url', 'list', 'capture', 'media', 'template', 'product'].includes(
     props.data.def.type,
   ),
 )
+
+const productSummary = computed(() => {
+  const def = props.data.def
+  if (def.type !== 'product') return null
+  if (def.sections?.length) {
+    const total = def.sections.reduce((sum, s) => sum + s.retailer_ids.length, 0)
+    return `${total} producto(s) en ${def.sections.length} sección(es)`
+  }
+  return def.retailer_id || '(sin producto elegido)'
+})
+
+// Las filas de opciones (botones / lista) se dibujan como botones de
+// WhatsApp DENTRO de la tarjeta, cada una con su handle; el resto de
+// handles (Sigue / Sí / No / ramas) van en el pie.
+const isOptionRows = computed(() => ['buttons', 'list'].includes(props.data.def.type))
+
+const isImagePreview = computed(
+  () =>
+    props.data.def.type === 'media' &&
+    props.data.def.kind === 'image' &&
+    (props.data.def.url ?? '').startsWith('http'),
+)
+
+const MEDIA_ICONS = {
+  image: 'pi pi-image',
+  video: 'pi pi-video',
+  audio: 'pi pi-volume-up',
+  document: 'pi pi-paperclip',
+} as const
+
+function handleColor(handleId: string): string {
+  if (props.data.def.type === 'condition') return handleId === 'then' ? '#22c55e' : '#f87171'
+  return meta.value.accent
+}
 </script>
 
 <template>
@@ -112,36 +160,75 @@ const isBubble = computed(() =>
     </div>
 
     <div class="px-3 py-2">
-      <p
-        v-if="isBubble"
-        class="line-clamp-3 rounded-lg rounded-tl-sm bg-slate-100 px-2.5 py-1.5 text-xs leading-relaxed text-slate-700"
-      >
-        {{ summary }}
-      </p>
-      <p v-else class="text-xs font-medium leading-relaxed text-slate-600">{{ summary }}</p>
+      <!-- contenido tipo chat: la burbuja como la veria la clienta -->
+      <template v-if="isChat">
+        <div class="rounded-lg rounded-tl-sm bg-[#f0f2f5] px-2.5 py-1.5">
+          <!-- miniatura de imagen (nodo multimedia) -->
+          <img
+            v-if="isImagePreview"
+            :src="data.def.url"
+            class="mb-1.5 max-h-24 w-full rounded-md object-cover"
+            @error="($event.target as HTMLImageElement).style.display = 'none'"
+          />
+          <div
+            v-else-if="data.def.type === 'media'"
+            class="mb-1.5 flex h-14 items-center justify-center rounded-md bg-white text-slate-300"
+          >
+            <i :class="MEDIA_ICONS[data.def.kind ?? 'image']" class="text-xl" />
+          </div>
 
-      <p v-if="data.def.type === 'cta_url'" class="mt-1 truncate text-[11px] text-emerald-700">
-        <i class="pi pi-link mr-1 text-[10px]" />{{ data.def.url }}
-      </p>
+          <!-- plantilla: referencia compacta -->
+          <p v-if="data.def.type === 'template'" class="text-xs leading-relaxed text-slate-700">
+            <i class="pi pi-file-check mr-1 text-[10px] text-fuchsia-600" />
+            <template v-if="data.def.template">
+              Plantilla <span class="font-semibold">{{ data.def.template }}</span>
+              <span class="text-slate-400"> · {{ data.def.language || 'es' }}</span>
+            </template>
+            <span v-else class="italic text-slate-400">Sin plantilla elegida…</span>
+          </p>
 
-      <p v-if="data.def.type === 'media'" class="mt-1 truncate text-[11px] text-orange-700">
-        <i :class="MEDIA_ICONS[data.def.kind ?? 'image']" class="mr-1 text-[10px]" />{{ data.def.url }}
-      </p>
+          <!-- texto con pills de variables -->
+          <p
+            v-else-if="bubbleTokens.length"
+            class="line-clamp-4 text-xs leading-relaxed text-slate-800"
+          >
+            <template v-for="(token, index) in bubbleTokens" :key="index">
+              <span
+                v-if="token.kind === 'var'"
+                class="mx-0.5 inline-block rounded bg-teal-600/10 px-1 py-px align-baseline text-[10px] font-semibold leading-tight text-teal-700"
+                :title="`{{${token.value}}}`"
+              >
+                {{ pillLabel(token.value) }}
+              </span>
+              <template v-else>{{ token.value }}</template>
+            </template>
+          </p>
+          <p
+            v-else-if="data.def.type !== 'media'"
+            class="text-xs italic leading-relaxed text-slate-400"
+          >
+            Sin texto todavía…
+          </p>
+        </div>
 
-      <p v-if="data.def.type === 'list'" class="mt-1 text-[11px] text-slate-500">
-        <i class="pi pi-bars mr-1 text-[10px]" />Botón: «{{ data.def.button || 'Ver opciones' }}»
-      </p>
+        <!-- pie contextual por tipo -->
+        <p v-if="data.def.type === 'cta_url'" class="mt-1 truncate text-[11px] text-cyan-700">
+          <i class="pi pi-link mr-1 text-[10px]" />{{ data.def.url }}
+        </p>
+        <p v-if="data.def.type === 'capture'" class="mt-1 truncate text-[11px] font-medium text-slate-600">
+          <i class="pi pi-inbox mr-1 text-[10px]" />Guarda en:
+          <span class="rounded bg-slate-100 px-1 font-mono text-[10px]">{{ data.def.field || '(sin campo)' }}</span>
+        </p>
+        <p v-if="data.def.type === 'list'" class="mt-1 text-center text-[11px] text-slate-400">
+          <i class="pi pi-bars mr-1 text-[10px]" />{{ data.def.button || 'Ver opciones' }}
+        </p>
+        <p v-if="data.def.type === 'product'" class="mt-1 truncate text-[11px] font-medium text-rose-700">
+          <i class="pi pi-shopping-bag mr-1 text-[10px]" />{{ productSummary }}
+        </p>
+      </template>
 
-      <p v-if="data.def.type === 'capture'" class="mt-1 truncate text-[11px] font-medium text-slate-600">
-        <i class="pi pi-inbox mr-1 text-[10px]" />Guarda en: {{ data.def.field || '(sin campo)' }}
-      </p>
-
-      <p v-if="data.def.type === 'template'" class="mt-1 text-[11px] text-fuchsia-700">
-        <i class="pi pi-globe mr-1 text-[10px]" />{{ data.def.language || 'es' }}
-        <span v-if="data.def.params?.length" class="ml-1 text-slate-500">
-          · {{ data.def.params.length }} variable(s)
-        </span>
-      </p>
+      <!-- nodos de logica: resumen plano -->
+      <p v-else class="text-xs font-medium leading-relaxed text-slate-600">{{ logicSummary }}</p>
 
       <div v-if="effects.length" class="mt-1.5 flex flex-wrap gap-1">
         <span
@@ -154,12 +241,38 @@ const isBubble = computed(() =>
       </div>
     </div>
 
-    <div class="flex flex-col gap-1.5 border-t border-slate-100 py-2">
+    <!-- filas de opciones como botones de WhatsApp (cada una conecta) -->
+    <div v-if="isOptionRows" class="flex flex-col gap-1 px-3 pb-2">
+      <div v-for="handle in handles" :key="handle.id" class="relative">
+        <div
+          class="rounded-lg border border-slate-200 bg-white py-1 pr-4 text-center text-[11px] font-medium"
+          :style="{ color: meta.accent }"
+        >
+          {{ handle.label }}
+        </div>
+        <Handle
+          :id="handle.id"
+          type="source"
+          :position="Position.Right"
+          class="!h-3 !w-3 !border-2 !bg-white"
+          :style="{
+            borderColor: meta.accent,
+            position: 'absolute',
+            right: '-18px',
+            top: '50%',
+            transform: 'translateY(-50%)',
+          }"
+        />
+      </div>
+    </div>
+
+    <!-- salidas simples / de logica en el pie -->
+    <div v-else class="flex flex-col gap-1.5 border-t border-slate-100 py-2">
       <div v-for="handle in handles" :key="handle.id" class="relative flex items-center justify-end pr-4">
         <span
           v-if="data.def.type === 'condition'"
           class="mr-1 inline-block h-2 w-2 rounded-full"
-          :style="{ backgroundColor: handle.id === 'then' ? '#22c55e' : '#f87171' }"
+          :style="{ backgroundColor: handleColor(handle.id) }"
         />
         <span class="truncate text-[11px] text-slate-500">{{ handle.label }}</span>
         <Handle
@@ -168,12 +281,7 @@ const isBubble = computed(() =>
           :position="Position.Right"
           class="!h-3 !w-3 !border-2 !bg-white"
           :style="{
-            borderColor:
-              data.def.type === 'condition'
-                ? handle.id === 'then'
-                  ? '#22c55e'
-                  : '#f87171'
-                : meta.accent,
+            borderColor: handleColor(handle.id),
             position: 'absolute',
             right: '-6px',
             top: '50%',
