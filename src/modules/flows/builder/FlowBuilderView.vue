@@ -390,6 +390,50 @@ function removeButton(index: number): void {
   void nextTick(() => updateNodeInternals([selectedId.value!]))
 }
 
+// Filas del mensaje de lista: mismo baile que los botones (los handles
+// cambian, hay que re-registrarlos).
+function addRow(): void {
+  const def = selectedNode.value?.data?.def
+  if (!def?.rows || def.rows.length >= 10) return
+  def.rows.push({ id: newButtonId(def.rows), title: '' })
+  void nextTick(() => updateNodeInternals([selectedId.value!]))
+}
+
+function removeRow(index: number): void {
+  const def = selectedNode.value?.data?.def
+  if (!def?.rows) return
+  const [removed] = def.rows.splice(index, 1)
+  edges.value = edges.value.filter(
+    (e) => !(e.source === selectedId.value && e.sourceHandle === `row:${removed.id}`),
+  )
+  void nextTick(() => updateNodeInternals([selectedId.value!]))
+}
+
+// Ramas del aleatorizador (2-5). Quitar una recorre los indices de los
+// handles: las aristas de ramas posteriores se re-indexan.
+function addBranch(): void {
+  const def = selectedNode.value?.data?.def
+  if (!def?.branches || def.branches.length >= 5) return
+  def.branches.push({ weight: 50 })
+  void nextTick(() => updateNodeInternals([selectedId.value!]))
+}
+
+function removeBranch(index: number): void {
+  const def = selectedNode.value?.data?.def
+  if (!def?.branches || def.branches.length <= 2) return
+  def.branches.splice(index, 1)
+  edges.value = edges.value
+    .filter((e) => !(e.source === selectedId.value && e.sourceHandle === `br:${index}`))
+    .map((e) => {
+      if (e.source !== selectedId.value || !e.sourceHandle?.startsWith('br:')) return e
+      const branchIndex = Number(e.sourceHandle.slice(3))
+      return branchIndex > index
+        ? makeEdge(e.source, `br:${branchIndex - 1}`, e.target)
+        : e
+    })
+  void nextTick(() => updateNodeInternals([selectedId.value!]))
+}
+
 // La condición se edita con una forma canónica (una sola clave del `when`).
 const conditionKind = computed({
   get(): 'tag' | 'not_tag' | 'field' {
@@ -795,11 +839,11 @@ const menuTypes = Object.entries(NODE_CATALOG) as [
           <div class="flex flex-1 flex-col gap-3 overflow-y-auto p-4">
             <!-- texto (nodos que envían) -->
             <div
-              v-if="['message', 'buttons', 'cta_url'].includes(selectedNode.data!.def.type)"
+              v-if="['message', 'buttons', 'cta_url', 'list', 'capture'].includes(selectedNode.data!.def.type)"
               class="flex flex-col gap-1.5"
             >
               <label class="text-xs font-medium text-slate-600">
-                Mensaje
+                {{ selectedNode.data!.def.type === 'capture' ? 'Pregunta' : 'Mensaje' }}
                 <span class="font-normal text-slate-400">(admite <code v-pre>{{variables}}</code>)</span>
               </label>
               <Textarea
@@ -809,6 +853,129 @@ const menuTypes = Object.entries(NODE_CATALOG) as [
                 fluid
                 class="!text-sm"
               />
+            </div>
+
+            <!-- media -->
+            <template v-if="selectedNode.data!.def.type === 'media'">
+              <div class="flex flex-col gap-1.5">
+                <label class="text-xs font-medium text-slate-600">Tipo</label>
+                <Select
+                  v-model="selectedNode.data!.def.kind"
+                  :options="[
+                    { label: 'Imagen', value: 'image' },
+                    { label: 'Video', value: 'video' },
+                    { label: 'Audio', value: 'audio' },
+                    { label: 'Archivo (PDF, etc.)', value: 'document' },
+                  ]"
+                  option-label="label"
+                  option-value="value"
+                  fluid
+                  class="!text-sm"
+                />
+              </div>
+              <div class="flex flex-col gap-1.5">
+                <label class="text-xs font-medium text-slate-600">
+                  URL pública <span class="font-normal text-slate-400">(Meta la descarga)</span>
+                </label>
+                <InputText v-model="selectedNode.data!.def.url" placeholder="https://…" fluid class="!text-sm" />
+              </div>
+              <div v-if="selectedNode.data!.def.kind !== 'audio'" class="flex flex-col gap-1.5">
+                <label class="text-xs font-medium text-slate-600">Descripción (caption)</label>
+                <Textarea v-model="selectedNode.data!.def.caption" rows="2" auto-resize fluid class="!text-sm" />
+              </div>
+              <div v-if="selectedNode.data!.def.kind === 'document'" class="flex flex-col gap-1.5">
+                <label class="text-xs font-medium text-slate-600">Nombre del archivo</label>
+                <InputText v-model="selectedNode.data!.def.filename" placeholder="catalogo.pdf" fluid class="!text-sm" />
+              </div>
+            </template>
+
+            <!-- list -->
+            <template v-if="selectedNode.data!.def.type === 'list'">
+              <div class="flex flex-col gap-1.5">
+                <label class="text-xs font-medium text-slate-600">Texto del botón que abre la lista</label>
+                <InputText
+                  v-model="selectedNode.data!.def.button"
+                  placeholder="Ver opciones"
+                  :maxlength="20"
+                  fluid
+                  class="!text-sm"
+                />
+              </div>
+              <div class="flex flex-col gap-2">
+                <label class="text-xs font-medium text-slate-600">Opciones (máx. 10, regla de Meta)</label>
+                <div
+                  v-for="(row, index) in selectedNode.data!.def.rows"
+                  :key="row.id"
+                  class="flex flex-col gap-1 rounded-lg border border-slate-200 p-2"
+                >
+                  <div class="flex items-center gap-1">
+                    <InputText v-model="row.title" :placeholder="`Opción ${index + 1} (máx. 24)`" :maxlength="24" fluid class="!text-sm" />
+                    <Button
+                      icon="pi pi-times"
+                      text
+                      size="small"
+                      severity="secondary"
+                      :disabled="selectedNode.data!.def.rows!.length <= 1"
+                      @click="removeRow(index)"
+                    />
+                  </div>
+                  <InputText v-model="row.description" placeholder="Descripción (opcional, máx. 72)" :maxlength="72" fluid class="!text-xs" />
+                </div>
+                <Button
+                  v-if="(selectedNode.data!.def.rows?.length ?? 0) < 10"
+                  label="Agregar opción"
+                  icon="pi pi-plus"
+                  text
+                  size="small"
+                  @click="addRow"
+                />
+              </div>
+            </template>
+
+            <!-- capture -->
+            <div v-if="selectedNode.data!.def.type === 'capture'" class="flex flex-col gap-1.5">
+              <label class="text-xs font-medium text-slate-600">
+                Guardar la respuesta en el campo
+                <span class="font-normal text-slate-400">(custom field del contacto)</span>
+              </label>
+              <InputText v-model="selectedNode.data!.def.field" placeholder="nombre_cita" fluid class="!text-sm" />
+              <p class="text-[11px] leading-snug text-slate-400">
+                El siguiente texto libre que escriba el contacto queda guardado ahí y el flujo
+                continúa. Luego puedes usarlo como <code v-pre>{{contact.fields.tu_campo}}</code>.
+              </p>
+            </div>
+
+            <!-- random -->
+            <div v-if="selectedNode.data!.def.type === 'random'" class="flex flex-col gap-2">
+              <label class="text-xs font-medium text-slate-600">Ramas y pesos (2-5)</label>
+              <div
+                v-for="(branch, index) in selectedNode.data!.def.branches"
+                :key="index"
+                class="flex items-center gap-2"
+              >
+                <span class="w-5 text-center text-xs font-bold text-slate-500">{{ 'ABCDE'[index] }}</span>
+                <InputNumber v-model="branch.weight" :min="1" :max="100" class="flex-1" fluid />
+                <Button
+                  icon="pi pi-times"
+                  text
+                  size="small"
+                  severity="secondary"
+                  :disabled="selectedNode.data!.def.branches!.length <= 2"
+                  @click="removeBranch(index)"
+                />
+              </div>
+              <Button
+                v-if="(selectedNode.data!.def.branches?.length ?? 0) < 5"
+                label="Agregar rama"
+                icon="pi pi-plus"
+                text
+                size="small"
+                @click="addBranch"
+              />
+              <p class="text-[11px] leading-snug text-slate-400">
+                Los pesos son proporciones (no tienen que sumar 100). El dado se tira en cada
+                corrida.
+              </p>
             </div>
 
             <!-- buttons -->

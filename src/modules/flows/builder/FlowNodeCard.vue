@@ -24,8 +24,23 @@ const summary = computed(() => {
   const def = props.data.def
   if (def.type === 'delay') return formatMinutes(def.minutes ?? 0)
   if (def.type === 'condition') return describeWhen()
+  if (def.type === 'random') {
+    const count = def.branches?.length ?? 0
+    return `Reparte el tráfico en ${count} ramas`
+  }
+  if (def.type === 'media') {
+    const labels = { image: 'Imagen', video: 'Video', audio: 'Audio', document: 'Archivo' }
+    return def.caption || labels[def.kind ?? 'image']
+  }
   return def.text || 'Sin texto todavía…'
 })
+
+const MEDIA_ICONS = {
+  image: 'pi pi-image',
+  video: 'pi pi-video',
+  audio: 'pi pi-volume-up',
+  document: 'pi pi-paperclip',
+} as const
 
 function formatMinutes(minutes: number): string {
   if (minutes >= 1440 && minutes % 1440 === 0) return `Esperar ${minutes / 1440} día(s)`
@@ -55,7 +70,9 @@ const effects = computed(() => {
   ]
 })
 
-const isBubble = computed(() => ['message', 'buttons', 'cta_url'].includes(props.data.def.type))
+const isBubble = computed(() =>
+  ['message', 'buttons', 'cta_url', 'list', 'capture', 'media'].includes(props.data.def.type),
+)
 </script>
 
 <template>
@@ -100,6 +117,18 @@ const isBubble = computed(() => ['message', 'buttons', 'cta_url'].includes(props
 
       <p v-if="data.def.type === 'cta_url'" class="mt-1 truncate text-[11px] text-emerald-700">
         <i class="pi pi-link mr-1 text-[10px]" />{{ data.def.url }}
+      </p>
+
+      <p v-if="data.def.type === 'media'" class="mt-1 truncate text-[11px] text-orange-700">
+        <i :class="MEDIA_ICONS[data.def.kind ?? 'image']" class="mr-1 text-[10px]" />{{ data.def.url }}
+      </p>
+
+      <p v-if="data.def.type === 'list'" class="mt-1 text-[11px] text-slate-500">
+        <i class="pi pi-bars mr-1 text-[10px]" />Botón: «{{ data.def.button || 'Ver opciones' }}»
+      </p>
+
+      <p v-if="data.def.type === 'capture'" class="mt-1 truncate text-[11px] font-medium text-slate-600">
+        <i class="pi pi-inbox mr-1 text-[10px]" />Guarda en: {{ data.def.field || '(sin campo)' }}
       </p>
 
       <div v-if="effects.length" class="mt-1.5 flex flex-wrap gap-1">

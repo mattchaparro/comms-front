@@ -2,7 +2,32 @@
 // (api/v1/admin_flows.py en nexolu-comms-api) - mantener sincronizado.
 // El esquema de nodos refleja core/flows/engine.py (motor v2).
 
-export type FlowNodeType = 'message' | 'buttons' | 'cta_url' | 'condition' | 'delay'
+export type FlowNodeType =
+  | 'message'
+  | 'buttons'
+  | 'cta_url'
+  | 'condition'
+  | 'delay'
+  | 'random'
+  | 'media'
+  | 'list'
+  | 'capture'
+
+export type MediaKind = 'image' | 'video' | 'audio' | 'document'
+
+// Fila del mensaje de lista (interactive.list, hasta 10).
+export interface ListRow {
+  id: string
+  title: string
+  description?: string
+  next?: string | null
+}
+
+// Rama del aleatorizador: dado ponderado, re-tirado en cada corrida.
+export interface RandomBranch {
+  weight: number
+  next?: string | null
+}
 
 export interface FlowButton {
   id: string
@@ -36,6 +61,16 @@ export interface FlowNodeDef {
   else?: string | null
   // delay
   minutes?: number
+  // random (2 a 5 ramas)
+  branches?: RandomBranch[]
+  // media (por link publico; caption en image/video/document)
+  kind?: MediaKind
+  caption?: string
+  filename?: string
+  // list (reusa `button` como texto del boton que abre la lista)
+  rows?: ListRow[]
+  // capture (guarda el siguiente texto libre en contact.fields[field])
+  field?: string
   // efectos sobre el contacto (cualquier nodo)
   add_tags?: string[]
   remove_tags?: string[]

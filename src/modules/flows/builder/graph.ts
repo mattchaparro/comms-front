@@ -13,7 +13,7 @@
 
 import type { Edge, Node } from '@vue-flow/core'
 
-import type { FlowButton, FlowDefinition, FlowNodeDef, FlowNodeType } from '@/types/flows'
+import type { FlowDefinition, FlowNodeDef, FlowNodeType } from '@/types/flows'
 
 export interface BuilderNodeData {
   def: FlowNodeDef
@@ -77,6 +77,34 @@ export const NODE_CATALOG: Record<
     headerBg: '#fef3c7',
     description: 'Pausa el flujo y sigue solo cuando pasa el tiempo.',
   },
+  random: {
+    label: 'Aleatorizador',
+    icon: 'pi pi-percentage',
+    accent: '#db2777',
+    headerBg: '#fce7f3',
+    description: 'Reparte el tráfico entre 2-5 ramas (test A/B).',
+  },
+  media: {
+    label: 'Multimedia',
+    icon: 'pi pi-image',
+    accent: '#ea580c',
+    headerBg: '#ffedd5',
+    description: 'Imagen, video, audio o archivo (por link público).',
+  },
+  list: {
+    label: 'Lista de opciones',
+    icon: 'pi pi-bars',
+    accent: '#65a30d',
+    headerBg: '#ecfccb',
+    description: 'Menú de hasta 10 opciones. Espera la elección.',
+  },
+  capture: {
+    label: 'Recopilar dato',
+    icon: 'pi pi-inbox',
+    accent: '#334155',
+    headerBg: '#e2e8f0',
+    description: 'Pregunta y guarda la respuesta en un campo del contacto.',
+  },
 }
 
 // --- definición -> grafo ------------------------------------------------------
@@ -94,6 +122,13 @@ export function definitionToGraph(definition: FlowDefinition): {
     delete def.then
     delete def.else
     if (def.buttons) def.buttons = def.buttons.map(({ id: bid, title }) => ({ id: bid, title }))
+    if (def.branches) def.branches = def.branches.map(({ weight }) => ({ weight }))
+    if (def.rows)
+      def.rows = def.rows.map(({ id: rid, title, description }) => ({
+        id: rid,
+        title,
+        ...(description ? { description } : {}),
+      }))
     return {
       id,
       type: 'flow',
@@ -110,6 +145,16 @@ export function definitionToGraph(definition: FlowDefinition): {
     for (const button of node.buttons ?? []) {
       if (button.next && definition.nodes[button.next]) {
         edges.push(makeEdge(id, `btn:${button.id}`, button.next))
+      }
+    }
+    for (const [index, branch] of (node.branches ?? []).entries()) {
+      if (branch.next && definition.nodes[branch.next]) {
+        edges.push(makeEdge(id, `br:${index}`, branch.next))
+      }
+    }
+    for (const row of node.rows ?? []) {
+      if (row.next && definition.nodes[row.next]) {
+        edges.push(makeEdge(id, `row:${row.id}`, row.next))
       }
     }
     for (const branch of ['then', 'else'] as const) {
@@ -187,6 +232,23 @@ export function graphToDefinition(nodes: Node[], edges: Edge[]): FlowDefinition 
         return next ? { ...button, next } : { id: button.id, title: button.title }
       })
       delete def.next
+    } else if (def.type === 'random') {
+      def.branches = (def.branches ?? []).map((branch, index) => {
+        const next = outgoing.get(`${node.id}|br:${index}`)
+        return next ? { weight: branch.weight, next } : { weight: branch.weight }
+      })
+      delete def.next
+    } else if (def.type === 'list') {
+      def.rows = (def.rows ?? []).map((row) => {
+        const next = outgoing.get(`${node.id}|row:${row.id}`)
+        const base = {
+          id: row.id,
+          title: row.title,
+          ...(row.description ? { description: row.description } : {}),
+        }
+        return next ? { ...base, next } : base
+      })
+      delete def.next
     } else {
       const next = outgoing.get(`${node.id}|next`)
       if (next) def.next = next
@@ -221,6 +283,18 @@ export function sourceHandles(def: FlowNodeDef): { id: string; label: string }[]
   if (def.type === 'buttons') {
     return (def.buttons ?? []).map((b) => ({ id: `btn:${b.id}`, label: b.title || '(botón)' }))
   }
+  if (def.type === 'random') {
+    const branches = def.branches ?? []
+    const total = branches.reduce((sum, b) => sum + Math.max(1, b.weight), 0) || 1
+    const letters = 'ABCDE'
+    return branches.map((b, index) => ({
+      id: `br:${index}`,
+      label: `${letters[index] ?? index + 1} · ${Math.round((Math.max(1, b.weight) / total) * 100)}%`,
+    }))
+  }
+  if (def.type === 'list') {
+    return (def.rows ?? []).map((r) => ({ id: `row:${r.id}`, label: r.title || '(opción)' }))
+  }
   return [{ id: 'next', label: 'Sigue' }]
 }
 
@@ -230,9 +304,9 @@ export function newNodeId(existing: Set<string>): string {
   return `nodo_${index}`
 }
 
-export function newButtonId(buttons: FlowButton[]): string {
-  let index = buttons.length + 1
-  while (buttons.some((b) => b.id === `opcion_${index}`)) index += 1
+export function newButtonId(options: { id: string }[]): string {
+  let index = options.length + 1
+  while (options.some((b) => b.id === `opcion_${index}`)) index += 1
   return `opcion_${index}`
 }
 
@@ -248,6 +322,19 @@ export function defaultNodeDef(type: FlowNodeType): FlowNodeDef {
       return { type, when: { tag: '' } }
     case 'delay':
       return { type, minutes: 60 }
+    case 'random':
+      return { type, branches: [{ weight: 50 }, { weight: 50 }] }
+    case 'media':
+      return { type, kind: 'image', url: 'https://', caption: '' }
+    case 'list':
+      return {
+        type,
+        text: '',
+        button: 'Ver opciones',
+        rows: [{ id: 'opcion_1', title: '' }],
+      }
+    case 'capture':
+      return { type, text: '', field: '' }
   }
 }
 
@@ -270,6 +357,8 @@ export function autoLayout(definition: FlowDefinition): Record<string, { x: numb
       node.then,
       node.else,
       ...(node.buttons ?? []).map((b) => b.next),
+      ...(node.branches ?? []).map((b) => b.next),
+      ...(node.rows ?? []).map((r) => r.next),
     ].filter((t): t is string => Boolean(t && definition.nodes[t]))
     for (const target of targets) {
       if (!depths.has(target)) {
