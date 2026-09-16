@@ -1,5 +1,53 @@
 // Refleja FlowOut/FlowIn/FlowPatch y ContactOut/ContactPatch
 // (api/v1/admin_flows.py en nexolu-comms-api) - mantener sincronizado.
+// El esquema de nodos refleja core/flows/engine.py (motor v2).
+
+export type FlowNodeType = 'message' | 'buttons' | 'cta_url' | 'condition' | 'delay'
+
+export interface FlowButton {
+  id: string
+  title: string
+  next?: string | null
+}
+
+// Exactamente UNA forma: tag/not_tag, o field + un operador.
+export interface ConditionWhen {
+  tag?: string
+  not_tag?: string
+  field?: string
+  equals?: string
+  not_equals?: string
+  contains?: string
+  exists?: boolean
+}
+
+export interface FlowNodeDef {
+  type: FlowNodeType
+  text?: string
+  next?: string | null
+  // buttons
+  buttons?: FlowButton[]
+  // cta_url
+  url?: string
+  button?: string
+  // condition
+  when?: ConditionWhen
+  then?: string | null
+  else?: string | null
+  // delay
+  minutes?: number
+  // efectos sobre el contacto (cualquier nodo)
+  add_tags?: string[]
+  remove_tags?: string[]
+  set_fields?: Record<string, string>
+}
+
+export interface FlowDefinition {
+  start: string
+  nodes: Record<string, FlowNodeDef>
+  // Del builder visual; el motor la ignora por completo.
+  ui?: { positions?: Record<string, { x: number; y: number }> }
+}
 
 export interface Flow {
   id: string

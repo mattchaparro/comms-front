@@ -78,6 +78,16 @@ const router = createRouter({
           component: () => import('@/modules/flows/views/FlowsView.vue'),
         },
         {
+          path: 'flujos/constructor',
+          name: 'flows.builder-new',
+          component: () => import('@/modules/flows/builder/FlowBuilderView.vue'),
+        },
+        {
+          path: 'flujos/:flowId/constructor',
+          name: 'flows.builder',
+          component: () => import('@/modules/flows/builder/FlowBuilderView.vue'),
+        },
+        {
           path: 'contactos',
           name: 'contacts',
           component: () => import('@/modules/flows/views/ContactsView.vue'),

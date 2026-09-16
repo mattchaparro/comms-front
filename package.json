@@ -16,6 +16,7 @@
     "@primeuix/themes": "^3.0.0",
     "@tanstack/vue-query": "^5.101.4",
     "@vee-validate/zod": "^4.15.1",
+    "@vue-flow/core": "^1.48.2",
     "@vueuse/core": "^14.4.0",
     "axios": "^1.19.0",
     "pinia": "^4.0.2",
@@ -41,5 +42,8 @@
     "typescript": "~6.0.2",
     "vite": "^8.2.0",
     "vue-tsc": "^3.3.8"
+  },
+  "allowScripts": {
+    "vue-demi@0.14.10": true
   }
 }

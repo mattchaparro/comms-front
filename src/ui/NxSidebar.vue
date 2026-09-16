@@ -1,21 +1,17 @@
 <script setup lang="ts">
-// Sidebar de escritorio + barra inferior movil, calcado de
-// Components/Menu/Sidebar.vue del legacy: logo arriba, boton de
-// colapsar, lista de items con icono + label. PrimeIcons para todo el
-// chrome de la app (nav, botones) - la unica excepcion es el icono de
-// categoria de producto (Material Icons, ver main.ts) porque PrimeIcons
-// no cubre iconografia de retail/comida y el legacy ya trae ese
-// vocabulario resuelto. La barra movil muestra el mismo menu completo
-// (con scroll horizontal), no solo los items habilitados, para verse
-// consistente con el sidebar de escritorio.
+// Sidebar de escritorio + barra inferior movil, con la identidad propia
+// de Connect (blanco, texto oscuro, item activo en azul suave - el
+// lenguaje de las herramientas de automatizacion, no el indigo del POS).
+// PrimeIcons para todo el chrome de la app.
 import { ref } from 'vue'
 import { useRoute } from 'vue-router'
 
 import type { NavItem } from '@/types/navigation'
 
+import ConnectWordmark from './ConnectWordmark.vue'
+
 defineProps<{
   items: NavItem[]
-  logo: string
 }>()
 
 const collapsed = ref(false)
@@ -33,20 +29,15 @@ function linkTarget(item: NavItem) {
 <template>
   <aside
     :class="collapsed ? 'w-16' : 'w-64'"
-    class="hidden flex-col bg-indigo-900 transition-all duration-200 lg:flex"
+    class="hidden flex-col border-r border-slate-200 bg-white transition-all duration-200 lg:flex"
   >
-    <div class="flex items-center justify-center py-6">
-      <img
-        :src="logo"
-        alt="Nexolú Admin"
-        :class="collapsed ? 'h-7' : 'h-9'"
-        class="w-auto rounded-lg bg-white px-2 py-1"
-      />
+    <div class="flex items-center px-4 py-5" :class="collapsed ? 'justify-center px-2' : ''">
+      <ConnectWordmark :compact="collapsed" />
     </div>
 
     <button
       type="button"
-      class="mx-3 mb-2 flex items-center justify-end rounded-lg p-1.5 text-white/70 hover:bg-white/10 hover:text-white"
+      class="mx-3 mb-2 flex items-center justify-end rounded-lg p-1.5 text-slate-400 hover:bg-slate-100 hover:text-slate-600"
       :title="collapsed ? 'Expandir menú' : 'Colapsar menú'"
       @click="collapsed = !collapsed"
     >
@@ -54,7 +45,7 @@ function linkTarget(item: NavItem) {
     </button>
 
     <nav class="flex-1 overflow-y-auto px-3 pb-4">
-      <ul class="space-y-1">
+      <ul class="space-y-0.5">
         <li v-for="item in items" :key="item.label">
           <RouterLink
             v-if="!item.disabled && item.routeName"
@@ -62,8 +53,8 @@ function linkTarget(item: NavItem) {
             class="flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium transition-colors"
             :class="
               isActive(item)
-                ? 'bg-white/20 text-white'
-                : 'text-white/80 hover:bg-white/10 hover:text-white'
+                ? 'bg-blue-50 text-blue-700'
+                : 'text-slate-600 hover:bg-slate-100 hover:text-slate-900'
             "
           >
             <i :class="item.icon" class="w-5 text-center text-lg" />
@@ -71,7 +62,7 @@ function linkTarget(item: NavItem) {
           </RouterLink>
           <span
             v-else
-            class="flex cursor-not-allowed items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium text-white/40"
+            class="flex cursor-not-allowed items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium text-slate-300"
             :title="item.disabled ? 'Próximamente' : undefined"
           >
             <i :class="item.icon" class="w-5 text-center text-lg" />
@@ -96,12 +87,12 @@ function linkTarget(item: NavItem) {
             :class="[
               item.icon,
               'text-2xl leading-none',
-              isActive(item) ? 'text-indigo-700' : 'text-slate-500',
+              isActive(item) ? 'text-blue-600' : 'text-slate-500',
             ]"
           />
           <span
             class="mt-1 max-w-[5rem] truncate text-center text-xs font-medium leading-tight"
-            :class="isActive(item) ? 'text-indigo-800 font-bold' : 'text-slate-500'"
+            :class="isActive(item) ? 'text-blue-700 font-bold' : 'text-slate-500'"
           >
             {{ item.label }}
           </span>

@@ -1,9 +1,9 @@
 <script setup lang="ts">
 // Flujos de conversación (el corazón de ManyChat en Connect): disparador
-// por keyword o por API de la app, nodos con botones/links y tags sobre el
-// contacto. El editor es la definición JSON validada por el backend con
-// una plantilla de ejemplo precargada — el builder visual con cajitas es
-// una fase posterior; esto ya ejecuta flujos reales.
+// por keyword o por API de la app, nodos con botones/links/condiciones/
+// esperas y tags sobre el contacto. La edición normal es el builder visual
+// (builder/FlowBuilderView.vue); el diálogo JSON de acá queda como "modo
+// avanzado" sobre la misma definición validada por el backend.
 import { isAxiosError } from 'axios'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/vue-query'
 import Button from 'primevue/button'
@@ -21,6 +21,7 @@ import ToggleSwitch from 'primevue/toggleswitch'
 import { useConfirm } from 'primevue/useconfirm'
 import { useToast } from 'primevue/usetoast'
 import { computed, ref } from 'vue'
+import { useRouter } from 'vue-router'
 
 import { fetchCommsApps } from '@/modules/commsCore/services/commsCoreService'
 import { formatDateTime } from '@/utils/formatDateTime'
@@ -31,6 +32,7 @@ import { createFlow, deleteFlow, fetchFlows, updateFlow } from '../services/flow
 const queryClient = useQueryClient()
 const toast = useToast()
 const confirm = useConfirm()
+const router = useRouter()
 
 const { data: apps } = useQuery({ queryKey: ['comms-apps'] as const, queryFn: fetchCommsApps })
 const appOptions = computed(() => (apps.value ?? []).map((app) => app.app_id))
@@ -167,7 +169,20 @@ function confirmDelete(flow: Flow): void {
           cita.
         </p>
       </div>
-      <Button label="Nuevo flujo" icon="pi pi-plus" @click="openCreate" />
+      <div class="flex gap-2">
+        <Button
+          label="Modo avanzado (JSON)"
+          icon="pi pi-code"
+          severity="secondary"
+          outlined
+          @click="openCreate"
+        />
+        <Button
+          label="Nuevo flujo"
+          icon="pi pi-plus"
+          @click="router.push({ name: 'flows.builder-new' })"
+        />
+      </div>
     </div>
 
     <div class="mb-4">
@@ -215,7 +230,13 @@ function confirmDelete(flow: Flow): void {
       <Column header="">
         <template #body="{ data: row }">
           <div class="flex justify-end gap-1">
-            <Button icon="pi pi-pencil" text severity="secondary" title="Editar" @click="openEdit(row)" />
+            <Button
+              icon="pi pi-sitemap"
+              text
+              title="Abrir en el constructor"
+              @click="router.push({ name: 'flows.builder', params: { flowId: row.id } })"
+            />
+            <Button icon="pi pi-code" text severity="secondary" title="Modo avanzado (JSON)" @click="openEdit(row)" />
             <Button icon="pi pi-trash" text severity="danger" title="Eliminar" @click="confirmDelete(row)" />
           </div>
         </template>
@@ -273,7 +294,9 @@ function confirmDelete(flow: Flow): void {
           <label class="text-sm font-medium text-slate-700">Definición (nodos)</label>
           <p class="text-xs text-slate-500">
             Tipos: <code>message</code>, <code>buttons</code> (máx. 3, espera respuesta),
-            <code>cta_url</code> (abre un link). Variables <code v-pre>{{asi}}</code> y
+            <code>cta_url</code> (abre un link), <code>condition</code> (ramas
+            <code>then</code>/<code>else</code> por <code>when</code>) y <code>delay</code>
+            (<code>minutes</code> + <code>next</code>). Variables <code v-pre>{{asi}}</code> y
             <code v-pre>{{contact.name}}</code>; <code>add_tags</code>/<code>set_fields</code> por
             nodo. El backend valida al guardar.
           </p>
