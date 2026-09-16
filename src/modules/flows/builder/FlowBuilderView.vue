@@ -279,10 +279,13 @@ function openQuickMenu(
   clientY: number,
   source: { nodeId: string; handleId: string } | null,
 ): void {
+  // fixed sobre la pantalla completa; que no se salga por abajo/derecha.
+  // El menu ademas tiene max-height con scroll propio (ver template) para
+  // pantallas bajas: ninguna opcion puede quedar inalcanzable.
+  const menuHeight = Math.min(460, window.innerHeight * 0.8)
   quickMenu.value = {
-    // fixed sobre la pantalla completa; que no se salga por abajo/derecha.
     x: Math.min(clientX, window.innerWidth - 240),
-    y: Math.min(clientY, window.innerHeight - 320),
+    y: Math.max(8, Math.min(clientY, window.innerHeight - menuHeight - 12)),
     flow: screenToFlowCoordinate({ x: clientX, y: clientY }),
     source,
   }
@@ -1055,7 +1058,7 @@ const menuTypes = (
       <!-- Menú rápido (FAB, clic derecho, o soltar una conexión al vacío) -->
       <div
         v-if="quickMenu"
-        class="fixed z-30 w-56 overflow-hidden rounded-xl border border-slate-200 bg-white shadow-xl"
+        class="fixed z-30 flex max-h-[80vh] w-56 flex-col overflow-y-auto rounded-xl border border-slate-200 bg-white shadow-xl"
         :style="{ left: `${quickMenu.x}px`, top: `${quickMenu.y}px` }"
       >
         <p class="px-3 pb-1 pt-2.5 text-[11px] font-semibold uppercase tracking-wide text-slate-400">
@@ -1065,7 +1068,7 @@ const menuTypes = (
           v-for="[type, item] in menuTypes"
           :key="type"
           type="button"
-          class="flex w-full items-center gap-2.5 px-3 py-2 text-left transition-colors hover:bg-slate-50"
+          class="flex w-full shrink-0 items-center gap-2.5 px-3 py-2 text-left transition-colors hover:bg-slate-50"
           @click="addFromQuickMenu(type)"
         >
           <span
@@ -1081,7 +1084,7 @@ const menuTypes = (
         </button>
         <button
           type="button"
-          class="w-full border-t border-slate-100 px-3 py-2 text-left text-xs text-slate-400 hover:bg-slate-50"
+          class="w-full shrink-0 border-t border-slate-100 px-3 py-2 text-left text-xs text-slate-400 hover:bg-slate-50"
           @click="quickMenu = null"
         >
           Cancelar
