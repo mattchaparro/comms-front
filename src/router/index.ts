@@ -78,16 +78,6 @@ const router = createRouter({
           component: () => import('@/modules/flows/views/FlowsView.vue'),
         },
         {
-          path: 'flujos/constructor',
-          name: 'flows.builder-new',
-          component: () => import('@/modules/flows/builder/FlowBuilderView.vue'),
-        },
-        {
-          path: 'flujos/:flowId/constructor',
-          name: 'flows.builder',
-          component: () => import('@/modules/flows/builder/FlowBuilderView.vue'),
-        },
-        {
           path: 'contactos',
           name: 'contacts',
           component: () => import('@/modules/flows/views/ContactsView.vue'),
@@ -107,6 +97,21 @@ const router = createRouter({
           meta: { requiresPlatform: true },
         },
       ],
+    },
+    {
+      // El constructor de flujos vive FUERA del AppLayout: es un editor a
+      // pantalla completa (patron ManyChat - el canvas se queda con todo
+      // el espacio; nada de sidebar ni navbar).
+      path: '/flujos/constructor',
+      name: 'flows.builder-new',
+      component: () => import('@/modules/flows/builder/FlowBuilderView.vue'),
+      meta: { requiresAuth: true },
+    },
+    {
+      path: '/flujos/:flowId/constructor',
+      name: 'flows.builder',
+      component: () => import('@/modules/flows/builder/FlowBuilderView.vue'),
+      meta: { requiresAuth: true },
     },
     { path: '/:pathMatch(.*)*', redirect: { name: 'dashboard' } },
   ],

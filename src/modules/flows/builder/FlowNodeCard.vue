@@ -106,7 +106,7 @@ const isBubble = computed(() => ['message', 'buttons', 'cta_url'].includes(props
         <span
           v-for="effect in effects"
           :key="effect"
-          class="rounded bg-blue-50 px-1.5 py-0.5 text-[10px] font-medium text-blue-700"
+          class="rounded bg-teal-50 px-1.5 py-0.5 text-[10px] font-medium text-teal-700"
         >
           {{ effect }}
         </span>

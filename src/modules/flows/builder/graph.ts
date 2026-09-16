@@ -22,6 +22,17 @@ export interface BuilderNodeData {
 
 export type BuilderNode = Node<BuilderNodeData>
 
+// El nodo "Cuando..." (el disparador, como en ManyChat): virtual - existe
+// solo en el canvas, NO en definition.nodes. Su arista de salida define el
+// `start` del flujo (reconectarla cambia el inicio); su posicion se guarda
+// en ui.positions bajo esta misma clave.
+export const TRIGGER_NODE_ID = '__trigger__'
+
+export interface TriggerNodeData {
+  triggerType: 'api' | 'keyword'
+  keywords: string[]
+}
+
 // Identidad del builder (propia de Connect, lenguaje visual de las
 // herramientas de automatizacion): tarjeta blanca + franja de encabezado
 // PASTEL con texto oscuro por categoria; `accent` es el color fuerte de
@@ -31,24 +42,25 @@ export const NODE_CATALOG: Record<
   { label: string; icon: string; accent: string; headerBg: string; description: string }
 > = {
   message: {
+    // Verde WhatsApp: el nodo que envia un mensaje se ve como el canal.
     label: 'Mensaje',
     icon: 'pi pi-comment',
-    accent: '#2563eb',
-    headerBg: '#dbeafe',
+    accent: '#16a34a',
+    headerBg: '#dcfce7',
     description: 'Envía un texto y sigue de largo.',
   },
   buttons: {
     label: 'Botones',
     icon: 'pi pi-list',
-    accent: '#0284c7',
-    headerBg: '#e0f2fe',
+    accent: '#7c3aed',
+    headerBg: '#ede9fe',
     description: 'Hasta 3 botones (regla de Meta). Espera la respuesta.',
   },
   cta_url: {
     label: 'Abrir link',
     icon: 'pi pi-external-link',
-    accent: '#059669',
-    headerBg: '#d1fae5',
+    accent: '#0891b2',
+    headerBg: '#cffafe',
     description: 'Botón que abre una URL (la acción vive en tu web/app).',
   },
   condition: {
@@ -113,9 +125,15 @@ export function definitionToGraph(definition: FlowDefinition): {
 
 export function makeEdge(source: string, sourceHandle: string, target: string): Edge {
   // Semaforo de ramas (lenguaje comun de estos builders): la rama "si"
-  // en verde, la "no" en rojo, el resto en gris neutro.
+  // en verde, la "no" en rojo, el disparador en teal, el resto gris.
   const stroke =
-    sourceHandle === 'then' ? '#22c55e' : sourceHandle === 'else' ? '#f87171' : '#94a3b8'
+    source === TRIGGER_NODE_ID
+      ? '#0d9488'
+      : sourceHandle === 'then'
+        ? '#22c55e'
+        : sourceHandle === 'else'
+          ? '#f87171'
+          : '#94a3b8'
   return {
     id: `${source}:${sourceHandle}->${target}`,
     source,
@@ -128,15 +146,31 @@ export function makeEdge(source: string, sourceHandle: string, target: string): 
 
 // --- grafo -> definición ------------------------------------------------------
 
-export function graphToDefinition(nodes: BuilderNode[], edges: Edge[]): FlowDefinition {
-  const start = nodes.find((n) => n.data?.isStart)?.id ?? nodes[0]?.id ?? ''
+export function graphToDefinition(nodes: Node[], edges: Edge[]): FlowDefinition {
   const outgoing = new Map<string, string>()
   for (const edge of edges) {
     if (edge.sourceHandle) outgoing.set(`${edge.source}|${edge.sourceHandle}`, edge.target)
   }
 
+  // El inicio lo define la arista del nodo disparador (como en ManyChat:
+  // reconectar "Entonces" cambia por donde arranca el flujo); si no hay,
+  // cae al isStart marcado o al primer nodo.
+  const flowNodes = nodes.filter((n): n is BuilderNode => n.id !== TRIGGER_NODE_ID)
+  const start =
+    outgoing.get(`${TRIGGER_NODE_ID}|start`) ??
+    flowNodes.find((n) => n.data?.isStart)?.id ??
+    flowNodes[0]?.id ??
+    ''
+
   const result: FlowDefinition = { start, nodes: {}, ui: { positions: {} } }
-  for (const node of nodes) {
+  const trigger = nodes.find((n) => n.id === TRIGGER_NODE_ID)
+  if (trigger) {
+    result.ui!.positions![TRIGGER_NODE_ID] = {
+      x: Math.round(trigger.position.x),
+      y: Math.round(trigger.position.y),
+    }
+  }
+  for (const node of flowNodes) {
     const def: FlowNodeDef = { ...(node.data?.def ?? { type: 'message' }) }
 
     if (def.type === 'condition') {

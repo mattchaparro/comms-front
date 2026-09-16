@@ -53,7 +53,7 @@ function linkTarget(item: NavItem) {
             class="flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium transition-colors"
             :class="
               isActive(item)
-                ? 'bg-blue-50 text-blue-700'
+                ? 'bg-teal-50 text-teal-700'
                 : 'text-slate-600 hover:bg-slate-100 hover:text-slate-900'
             "
           >
@@ -87,12 +87,12 @@ function linkTarget(item: NavItem) {
             :class="[
               item.icon,
               'text-2xl leading-none',
-              isActive(item) ? 'text-blue-600' : 'text-slate-500',
+              isActive(item) ? 'text-teal-600' : 'text-slate-500',
             ]"
           />
           <span
             class="mt-1 max-w-[5rem] truncate text-center text-xs font-medium leading-tight"
-            :class="isActive(item) ? 'text-blue-700 font-bold' : 'text-slate-500'"
+            :class="isActive(item) ? 'text-teal-700 font-bold' : 'text-slate-500'"
           >
             {{ item.label }}
           </span>

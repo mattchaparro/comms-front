@@ -11,7 +11,7 @@ const dotPattern =
 <template>
   <div class="flex min-h-screen">
     <div
-      class="relative hidden w-1/2 items-center justify-center bg-gradient-to-br from-blue-600 via-blue-700 to-teal-600 lg:flex"
+      class="relative hidden w-1/2 items-center justify-center bg-gradient-to-br from-teal-600 via-teal-700 to-emerald-800 lg:flex"
     >
       <div class="absolute inset-0 opacity-80" :style="{ backgroundImage: dotPattern }" />
       <div class="relative z-10 px-12 text-center">
