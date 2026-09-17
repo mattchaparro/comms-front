@@ -82,6 +82,29 @@ const lastChoicesIndex = computed(() => {
   return -1
 })
 
+// La hoja de opciones del mensaje de lista (como WhatsApp de verdad: el
+// boton abre un panel inferior con radios y "Enviar").
+const sheetOpenFor = ref<number | null>(null)
+const sheetSelection = ref<string | null>(null)
+
+function openSheet(index: number): void {
+  sheetOpenFor.value = index
+  sheetSelection.value = null
+}
+
+const sheetEvent = computed(() => {
+  if (sheetOpenFor.value === null) return null
+  const event = sim.value?.events[sheetOpenFor.value]
+  return event && event.kind === 'choices' ? event : null
+})
+
+function sendSheet(): void {
+  if (sheetSelection.value == null || !sim.value) return
+  sim.value.choose(sheetSelection.value)
+  sheetOpenFor.value = null
+  sheetSelection.value = null
+}
+
 defineExpose({ interpolate }) // evita el aviso de import sin uso; util en tests
 </script>
 
@@ -111,7 +134,7 @@ defineExpose({ interpolate }) // evita el aviso de import sin uso; util en tests
     </div>
 
     <!-- config del ensayo -->
-    <div class="flex flex-col gap-2 border-b border-slate-100 p-3">
+    <div class="flex shrink-0 flex-col gap-2 border-b border-slate-100 p-3">
       <div class="flex items-center gap-2">
         <label class="w-16 text-[11px] font-medium text-slate-500">Clienta</label>
         <InputText v-model="contactName" class="!h-7 flex-1 !text-xs" @change="restart" />
@@ -128,8 +151,8 @@ defineExpose({ interpolate }) // evita el aviso de import sin uso; util en tests
       </div>
     </div>
 
-    <!-- chat -->
-    <div ref="transcript" class="flex-1 overflow-y-auto bg-[#e5ddd5] p-3">
+    <!-- chat (min-h-0: sin el, el hijo flex no encoge y el scroll muere) -->
+    <div ref="transcript" class="relative min-h-0 flex-1 overflow-y-auto bg-[#e5ddd5] p-3">
       <div class="flex flex-col gap-2">
         <template v-for="(event, index) in sim?.events ?? []" :key="index">
           <!-- burbuja del bot -->
@@ -189,16 +212,29 @@ defineExpose({ interpolate }) // evita el aviso de import sin uso; util en tests
             </a>
           </div>
 
-          <!-- opciones (botones o lista) -->
+          <!-- mensaje de lista: como WhatsApp, un boton que abre la hoja -->
+          <div v-else-if="event.kind === 'choices' && event.listButton" class="w-[85%] self-start">
+            <button
+              type="button"
+              class="flex w-full items-center justify-center gap-1.5 rounded-lg bg-white py-2 text-[13px] font-medium shadow-sm"
+              :class="
+                index === lastChoicesIndex && sim?.waiting === 'choice'
+                  ? 'text-teal-700 hover:bg-teal-50'
+                  : 'pointer-events-none text-slate-300'
+              "
+              @click="openSheet(index)"
+            >
+              <i class="pi pi-list text-xs" />{{ event.listButton }}
+            </button>
+          </div>
+
+          <!-- botones de respuesta (reply buttons) -->
           <div v-else-if="event.kind === 'choices'" class="flex max-w-[85%] flex-col gap-1 self-start">
-            <p v-if="event.listButton" class="text-center text-[11px] text-slate-500">
-              <i class="pi pi-bars mr-1" />{{ event.listButton }}
-            </p>
             <button
               v-for="option in event.options"
               :key="option.id"
               type="button"
-              class="rounded-lg bg-white px-3 py-1.5 text-left shadow-sm transition-colors"
+              class="rounded-lg bg-white px-3 py-1.5 text-center shadow-sm transition-colors"
               :class="
                 index === lastChoicesIndex && sim?.waiting === 'choice'
                   ? 'text-teal-700 hover:bg-teal-50'
@@ -206,9 +242,8 @@ defineExpose({ interpolate }) // evita el aviso de import sin uso; util en tests
               "
               @click="sim?.choose(option.id)"
             >
-              <span class="block text-[13px] font-medium">{{ option.title }}</span>
-              <span v-if="option.description" class="block text-[11px] text-slate-400">
-                {{ option.description }}
+              <span class="block text-[13px] font-medium">
+                <i class="pi pi-reply mr-1 text-[10px]" />{{ option.title }}
               </span>
             </button>
           </div>
@@ -229,8 +264,53 @@ defineExpose({ interpolate }) // evita el aviso de import sin uso; util en tests
       </div>
     </div>
 
+    <!-- hoja de opciones del mensaje de lista (como en WhatsApp) -->
+    <div
+      v-if="sheetEvent"
+      class="absolute inset-0 z-10 flex flex-col justify-end bg-black/30"
+      @click.self="sheetOpenFor = null"
+    >
+      <div class="max-h-[70%] overflow-y-auto rounded-t-2xl bg-white shadow-2xl">
+        <div class="flex items-center justify-between border-b border-slate-100 px-4 py-2.5">
+          <span class="text-sm font-semibold text-slate-800">{{ sheetEvent.listButton }}</span>
+          <button type="button" class="p-1 text-slate-400 hover:text-slate-600" @click="sheetOpenFor = null">
+            <i class="pi pi-times text-sm" />
+          </button>
+        </div>
+        <label
+          v-for="option in sheetEvent.options"
+          :key="option.id"
+          class="flex cursor-pointer items-center gap-3 border-b border-slate-50 px-4 py-2.5 hover:bg-slate-50"
+        >
+          <span class="min-w-0 flex-1">
+            <span class="block truncate text-[13px] font-medium text-slate-800">{{ option.title }}</span>
+            <span v-if="option.description" class="block truncate text-[11px] text-slate-400">
+              {{ option.description }}
+            </span>
+          </span>
+          <input
+            v-model="sheetSelection"
+            type="radio"
+            name="sim-list-sheet"
+            :value="option.id"
+            class="h-4 w-4 accent-teal-600"
+          />
+        </label>
+        <div class="p-3">
+          <button
+            type="button"
+            class="w-full rounded-lg bg-teal-600 py-2 text-sm font-semibold text-white disabled:opacity-40"
+            :disabled="sheetSelection == null"
+            @click="sendSheet"
+          >
+            Enviar
+          </button>
+        </div>
+      </div>
+    </div>
+
     <!-- entrada de texto (capture) -->
-    <div class="flex items-center gap-2 border-t border-slate-100 p-2">
+    <div class="flex shrink-0 items-center gap-2 border-t border-slate-100 p-2">
       <InputText
         v-model="reply"
         :disabled="sim?.waiting !== 'text'"
@@ -242,7 +322,7 @@ defineExpose({ interpolate }) // evita el aviso de import sin uso; util en tests
     </div>
 
     <!-- contacto simulado -->
-    <div class="border-t border-slate-100 px-3 py-2">
+    <div class="max-h-24 shrink-0 overflow-y-auto border-t border-slate-100 px-3 py-2">
       <p class="text-[10px] font-semibold uppercase tracking-wide text-slate-400">Contacto simulado</p>
       <div class="mt-1 flex flex-wrap gap-1">
         <span

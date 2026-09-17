@@ -30,7 +30,8 @@ import ConnectWordmark from '@/ui/ConnectWordmark.vue'
 import type { BlockType, FlowDefinition, FlowNodeDef, FlowNodeType, MessageBlock } from '@/types/flows'
 import type { WhatsAppTemplate } from '@/types/templates'
 
-import { createFlow, fetchFlows, updateFlow } from '../services/flowsService'
+import { createFlow, fetchFlows, updateFlow, uploadMedia } from '../services/flowsService'
+import ConditionWhenEditor from './ConditionWhenEditor.vue'
 import FlowNodeCard from './FlowNodeCard.vue'
 import SimulatorPanel from './SimulatorPanel.vue'
 import TriggerNodeCard from './TriggerNodeCard.vue'
@@ -457,50 +458,30 @@ function removeBranch(index: number): void {
   void nextTick(() => updateNodeInternals([selectedId.value!]))
 }
 
-// La condición se edita con una forma canónica (una sola clave del `when`).
-const conditionKind = computed({
-  get(): 'tag' | 'not_tag' | 'field' {
-    const when = selectedNode.value?.data?.def.when ?? {}
-    if (when.not_tag !== undefined) return 'not_tag'
-    if (when.field !== undefined) return 'field'
-    return 'tag'
-  },
-  set(kind: 'tag' | 'not_tag' | 'field') {
-    const def = selectedNode.value?.data?.def
-    if (!def) return
-    def.when =
-      kind === 'field' ? { field: '', equals: '' } : kind === 'tag' ? { tag: '' } : { not_tag: '' }
-  },
-})
+// Condición multi-rama: casos en orden (primer match gana) + «Si no…».
+function addCase(): void {
+  const def = selectedNode.value?.data?.def
+  if (!def) return
+  def.cases = def.cases ?? []
+  if (def.cases.length >= 8) return
+  def.cases.push({ when: { tag: '' } })
+  void nextTick(() => updateNodeInternals([selectedId.value!]))
+}
 
-const conditionOp = computed({
-  get(): 'equals' | 'not_equals' | 'contains' | 'exists' {
-    const when = selectedNode.value?.data?.def.when ?? {}
-    if (when.not_equals !== undefined) return 'not_equals'
-    if (when.contains !== undefined) return 'contains'
-    if (when.exists !== undefined) return 'exists'
-    return 'equals'
-  },
-  set(op: 'equals' | 'not_equals' | 'contains' | 'exists') {
-    const def = selectedNode.value?.data?.def
-    if (!def?.when) return
-    const field = def.when.field ?? ''
-    def.when = op === 'exists' ? { field, exists: true } : { field, [op]: '' }
-  },
-})
-
-const conditionValue = computed({
-  get(): string {
-    const when = selectedNode.value?.data?.def.when ?? {}
-    return String(when.equals ?? when.not_equals ?? when.contains ?? '')
-  },
-  set(value: string) {
-    const when = selectedNode.value?.data?.def.when
-    if (!when) return
-    const op = conditionOp.value
-    if (op !== 'exists') (when as Record<string, string>)[op] = value
-  },
-})
+function removeCase(index: number): void {
+  const def = selectedNode.value?.data?.def
+  if (!def?.cases || def.cases.length <= 1) return
+  def.cases.splice(index, 1)
+  // Los handles case:N se re-indexan: las aristas posteriores tambien.
+  edges.value = edges.value
+    .filter((e) => !(e.source === selectedId.value && e.sourceHandle === `case:${index}`))
+    .map((e) => {
+      if (e.source !== selectedId.value || !e.sourceHandle?.startsWith('case:')) return e
+      const caseIndex = Number(e.sourceHandle.slice(5))
+      return caseIndex > index ? makeEdge(e.source, `case:${caseIndex - 1}`, e.target) : e
+    })
+  void nextTick(() => updateNodeInternals([selectedId.value!]))
+}
 
 // Delay en unidades humanas.
 const delayUnitRaw = ref<1 | 60 | 1440>(60)
@@ -785,6 +766,43 @@ function insertVariableInto(block: MessageBlock, path: string): void {
   block.text = `${block.text ?? ''}{{${path}}}`
 }
 
+// Subida de multimedia: el archivo va a comms-api (/v1/admin/media) y la
+// URL publica que devuelve queda en el bloque - Meta la descarga al enviar.
+const fileInput = ref<HTMLInputElement | null>(null)
+const uploading = ref(false)
+let uploadTarget: { url?: string } | null = null
+
+function pickFile(target: { url?: string }): void {
+  uploadTarget = target
+  fileInput.value?.click()
+}
+
+async function onFilePicked(event: Event): Promise<void> {
+  const input = event.target as HTMLInputElement
+  const file = input.files?.[0]
+  input.value = ''
+  if (!file || !uploadTarget) return
+  uploading.value = true
+  try {
+    const { url } = await uploadMedia(file)
+    uploadTarget.url = url
+    toast.add({ severity: 'success', summary: 'Archivo subido', life: 2500 })
+  } catch (error) {
+    toast.add({
+      severity: 'error',
+      summary: 'No se pudo subir',
+      detail:
+        isAxiosError<{ detail?: string }>(error) && error.response
+          ? (error.response.data?.detail ?? '')
+          : 'Revisa el tamaño (máx. 10MB) y el formato.',
+      life: 6000,
+    })
+  } finally {
+    uploading.value = false
+    uploadTarget = null
+  }
+}
+
 function blockMeta(type: BlockType) {
   return BLOCK_CATALOG.find((b) => b.type === type)!
 }
@@ -912,6 +930,13 @@ const menuTypes = (
 
 <template>
   <div class="flex h-screen flex-col bg-white">
+    <input
+      ref="fileInput"
+      type="file"
+      accept=".jpg,.jpeg,.png,.webp,.mp4,.3gp,.mp3,.ogg,.aac,.amr,.pdf"
+      class="hidden"
+      @change="onFilePicked"
+    />
     <!-- Barra superior compacta -->
     <header class="flex h-14 shrink-0 items-center gap-3 border-b border-slate-200 bg-white px-3">
       <Button
@@ -1237,7 +1262,18 @@ const menuTypes = (
 
                 <!-- multimedia -->
                 <template v-if="['image', 'video', 'audio', 'document'].includes(block.type)">
-                  <InputText v-model="block.url" placeholder="URL pública (Meta la descarga)" fluid class="!text-sm" />
+                  <div class="flex gap-1">
+                    <InputText v-model="block.url" placeholder="URL pública (Meta la descarga)" fluid class="flex-1 !text-sm" />
+                    <Button
+                      icon="pi pi-upload"
+                      size="small"
+                      severity="secondary"
+                      outlined
+                      :loading="uploading"
+                      title="Subir desde tu computador"
+                      @click="pickFile(block)"
+                    />
+                  </div>
                   <img
                     v-if="block.type === 'image' && (block.url ?? '').startsWith('http')"
                     :src="block.url"
@@ -1382,7 +1418,18 @@ const menuTypes = (
                 <label class="text-xs font-medium text-slate-600">
                   URL pública <span class="font-normal text-slate-400">(Meta la descarga)</span>
                 </label>
-                <InputText v-model="selectedNode.data!.def.url" placeholder="https://…" fluid class="!text-sm" />
+                <div class="flex gap-1">
+                  <InputText v-model="selectedNode.data!.def.url" placeholder="https://…" fluid class="flex-1 !text-sm" />
+                  <Button
+                    icon="pi pi-upload"
+                    size="small"
+                    severity="secondary"
+                    outlined
+                    :loading="uploading"
+                    title="Subir desde tu computador"
+                    @click="pickFile(selectedNode.data!.def)"
+                  />
+                </div>
               </div>
               <div v-if="selectedNode.data!.def.kind !== 'audio'" class="flex flex-col gap-1.5">
                 <label class="text-xs font-medium text-slate-600">Descripción (caption)</label>
@@ -1665,70 +1712,44 @@ const menuTypes = (
               </div>
             </template>
 
-            <!-- condition -->
+            <!-- condition multi-rama -->
             <template v-if="selectedNode.data!.def.type === 'condition'">
-              <div class="flex flex-col gap-1.5">
-                <label class="text-xs font-medium text-slate-600">Evaluar</label>
-                <Select
-                  v-model="conditionKind"
-                  :options="[
-                    { label: 'Tiene el tag', value: 'tag' },
-                    { label: 'NO tiene el tag', value: 'not_tag' },
-                    { label: 'Un campo / variable', value: 'field' },
-                  ]"
-                  option-label="label"
-                  option-value="value"
-                  fluid
-                  class="!text-sm"
-                />
-              </div>
-              <div v-if="conditionKind !== 'field'" class="flex flex-col gap-1.5">
-                <label class="text-xs font-medium text-slate-600">Tag</label>
-                <InputText
-                  :model-value="selectedNode.data!.def.when?.tag ?? selectedNode.data!.def.when?.not_tag ?? ''"
-                  placeholder="vip"
-                  fluid
-                  class="!text-sm"
-                  @update:model-value="
-                    (v) => {
-                      const when = selectedNode!.data!.def.when!
-                      if (conditionKind === 'tag') when.tag = v ?? ''
-                      else when.not_tag = v ?? ''
-                    }
-                  "
-                />
-              </div>
-              <template v-else>
-                <div class="flex flex-col gap-1.5">
-                  <label class="text-xs font-medium text-slate-600">
-                    Campo <span class="font-normal text-slate-400">(variable, contact.name o custom field)</span>
-                  </label>
-                  <InputText v-model="selectedNode.data!.def.when!.field" placeholder="sede" fluid class="!text-sm" />
-                </div>
-                <div class="flex flex-col gap-1.5">
-                  <label class="text-xs font-medium text-slate-600">Comparación</label>
-                  <Select
-                    v-model="conditionOp"
-                    :options="[
-                      { label: 'es igual a', value: 'equals' },
-                      { label: 'es distinto de', value: 'not_equals' },
-                      { label: 'contiene', value: 'contains' },
-                      { label: 'tiene valor', value: 'exists' },
-                    ]"
-                    option-label="label"
-                    option-value="value"
-                    fluid
-                    class="!text-sm"
+              <label class="text-xs font-medium text-slate-600">
+                Casos <span class="font-normal text-slate-400">(en orden — gana el primero que aplique)</span>
+              </label>
+              <div
+                v-for="(kase, index) in selectedNode.data!.def.cases"
+                :key="index"
+                class="flex flex-col gap-1.5 rounded-lg border border-slate-200 p-2"
+              >
+                <div class="flex items-center justify-between">
+                  <span class="flex items-center gap-1.5 text-[11px] font-semibold text-green-700">
+                    <span class="inline-block h-2 w-2 rounded-full bg-green-500" />
+                    Caso {{ index + 1 }}
+                  </span>
+                  <Button
+                    icon="pi pi-times"
+                    text
+                    size="small"
+                    severity="secondary"
+                    :disabled="selectedNode.data!.def.cases!.length <= 1"
+                    @click="removeCase(index)"
                   />
                 </div>
-                <div v-if="conditionOp !== 'exists'" class="flex flex-col gap-1.5">
-                  <label class="text-xs font-medium text-slate-600">Valor</label>
-                  <InputText v-model="conditionValue" fluid class="!text-sm" />
-                </div>
-              </template>
+                <ConditionWhenEditor v-model="kase.when" />
+              </div>
+              <Button
+                v-if="(selectedNode.data!.def.cases?.length ?? 0) < 8"
+                label="Agregar caso (si no, evaluar…)"
+                icon="pi pi-plus"
+                text
+                size="small"
+                @click="addCase"
+              />
               <p class="text-[11px] leading-snug text-slate-400">
-                Conecta la salida <span class="font-medium text-green-600">Sí</span> y/o
-                <span class="font-medium text-red-500">No</span> a los siguientes nodos.
+                Conecta cada caso (salidas <span class="font-medium text-green-600">verdes</span>) y
+                la salida <span class="font-medium text-red-500">«Si no…»</span> para cuando ninguno
+                aplique.
               </p>
             </template>
 

@@ -13,7 +13,21 @@
 
 import type { Edge, Node } from '@vue-flow/core'
 
-import type { FlowDefinition, FlowNodeDef, FlowNodeType } from '@/types/flows'
+import type { ConditionWhen, FlowDefinition, FlowNodeDef, FlowNodeType } from '@/types/flows'
+
+/** Resumen humano de UN `when` (para handles del canvas y tarjetas). */
+export function describeWhen(when: ConditionWhen | undefined): string {
+  if (!when) return ''
+  if (when.tag) return `Tag «${when.tag}»`
+  if (when.not_tag) return `Sin tag «${when.not_tag}»`
+  if (when.field) {
+    if (when.equals !== undefined) return `${when.field} = «${when.equals}»`
+    if (when.not_equals !== undefined) return `${when.field} ≠ «${when.not_equals}»`
+    if (when.contains !== undefined) return `${when.field} contiene «${when.contains}»`
+    if (when.exists !== undefined) return when.exists ? `${when.field} tiene valor` : `${when.field} vacío`
+  }
+  return ''
+}
 
 export interface BuilderNodeData {
   def: FlowNodeDef
@@ -141,6 +155,13 @@ export function definitionToGraph(definition: FlowDefinition): {
 
   const nodes: BuilderNode[] = Object.entries(definition.nodes).map(([id, raw]) => {
     const def: FlowNodeDef = { ...raw }
+    // La condicion clasica (when+then/else) se NORMALIZA a la forma
+    // multi-rama para editarla: el motor entiende ambas, el builder una.
+    if (def.type === 'condition' && !def.cases && def.when) {
+      def.cases = [{ when: { ...def.when } }]
+      delete def.when
+    }
+    if (def.cases) def.cases = def.cases.map((c) => ({ when: { ...c.when } }))
     delete def.next
     delete def.then
     delete def.else
@@ -208,11 +229,17 @@ export function definitionToGraph(definition: FlowDefinition): {
         }
       }
     }
-    for (const branch of ['then', 'else'] as const) {
-      const target = node[branch]
-      if (target && definition.nodes[target]) {
-        edges.push(makeEdge(id, branch, target))
+    // Condicion: la clasica mapea then->case:0; la multi-rama, cada caso.
+    if (node.type === 'condition' && !node.cases && node.then && definition.nodes[node.then]) {
+      edges.push(makeEdge(id, 'case:0', node.then))
+    }
+    for (const [index, kase] of (node.cases ?? []).entries()) {
+      if (kase.next && definition.nodes[kase.next]) {
+        edges.push(makeEdge(id, `case:${index}`, kase.next))
       }
+    }
+    if (node.else && definition.nodes[node.else]) {
+      edges.push(makeEdge(id, 'else', node.else))
     }
   }
 
@@ -222,10 +249,11 @@ export function definitionToGraph(definition: FlowDefinition): {
 export function makeEdge(source: string, sourceHandle: string, target: string): Edge {
   // Semaforo de ramas (lenguaje comun de estos builders): la rama "si"
   // en verde, la "no" en rojo, el disparador en teal, el resto gris.
+  const isCase = sourceHandle === 'then' || sourceHandle.startsWith('case:')
   const stroke =
     source === TRIGGER_NODE_ID
       ? '#0d9488'
-      : sourceHandle === 'then'
+      : isCase
         ? '#22c55e'
         : sourceHandle === 'else'
           ? '#f87171'
@@ -235,7 +263,7 @@ export function makeEdge(source: string, sourceHandle: string, target: string): 
     source,
     sourceHandle,
     target,
-    animated: sourceHandle === 'then' || sourceHandle === 'else',
+    animated: isCase || sourceHandle === 'else',
     style: { stroke, strokeWidth: 2 },
   }
 }
@@ -270,12 +298,16 @@ export function graphToDefinition(nodes: Node[], edges: Edge[]): FlowDefinition 
     const def: FlowNodeDef = { ...(node.data?.def ?? { type: 'message' }) }
 
     if (def.type === 'condition') {
-      const thenTarget = outgoing.get(`${node.id}|then`)
+      // El builder guarda SIEMPRE la forma multi-rama (cases + else).
+      def.cases = (def.cases ?? (def.when ? [{ when: def.when }] : [])).map((kase, index) => {
+        const next = outgoing.get(`${node.id}|case:${index}`)
+        return next ? { when: kase.when, next } : { when: kase.when }
+      })
       const elseTarget = outgoing.get(`${node.id}|else`)
-      if (thenTarget) def.then = thenTarget
-      else delete def.then
       if (elseTarget) def.else = elseTarget
       else delete def.else
+      delete def.when
+      delete def.then
       delete def.next
     } else if (def.type === 'buttons') {
       def.buttons = (def.buttons ?? []).map((button) => {
@@ -360,9 +392,13 @@ export function graphToDefinition(nodes: Node[], edges: Edge[]): FlowDefinition 
 /** Los handles de salida que expone un nodo, en orden de dibujo. */
 export function sourceHandles(def: FlowNodeDef): { id: string; label: string }[] {
   if (def.type === 'condition') {
+    const cases = def.cases ?? (def.when ? [{ when: def.when }] : [])
     return [
-      { id: 'then', label: 'Sí' },
-      { id: 'else', label: 'No' },
+      ...cases.map((kase, index) => ({
+        id: `case:${index}`,
+        label: describeWhen(kase.when) || `Caso ${index + 1}`,
+      })),
+      { id: 'else', label: 'Si no…' },
     ]
   }
   if (def.type === 'buttons') {
@@ -417,7 +453,7 @@ export function defaultNodeDef(type: FlowNodeType): FlowNodeDef {
     case 'cta_url':
       return { type, text: '', url: 'https://', button: 'Abrir' }
     case 'condition':
-      return { type, when: { tag: '' } }
+      return { type, cases: [{ when: { tag: '' } }] }
     case 'delay':
       return { type, minutes: 60 }
     case 'random':
@@ -463,6 +499,7 @@ export function autoLayout(definition: FlowDefinition): Record<string, { x: numb
       ...(node.buttons ?? []).map((b) => b.next),
       ...(node.branches ?? []).map((b) => b.next),
       ...(node.rows ?? []).map((r) => r.next),
+      ...(node.cases ?? []).map((c) => c.next),
       ...(node.blocks ?? []).flatMap((block) => [
         ...(block.buttons ?? []).map((b) => b.next),
         ...(block.rows ?? []).map((r) => r.next),

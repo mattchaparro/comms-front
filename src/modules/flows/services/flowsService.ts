@@ -31,6 +31,18 @@ export async function fetchContacts(appId?: string): Promise<Contact[]> {
   return data.items
 }
 
+/** Sube una imagen/video/audio/pdf y devuelve la URL publica que Meta
+ * descargara (bloque Imagen del builder). Refleja api/v1/admin_media.py. */
+export async function uploadMedia(file: File): Promise<{ url: string; filename: string }> {
+  const form = new FormData()
+  form.append('file', file)
+  const { data } = await httpClient.post<{ url: string; filename: string }>(
+    '/v1/admin/media',
+    form,
+  )
+  return data
+}
+
 export async function updateContact(
   contactId: string,
   payload: { name?: string; tags?: string[]; fields?: Record<string, unknown> },

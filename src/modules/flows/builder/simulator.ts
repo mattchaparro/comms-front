@@ -258,13 +258,23 @@ export class FlowSimulator {
           break
         }
         case 'condition': {
-          const result = evaluateCondition(node, context)
+          const cases = node.cases ?? (node.when ? [{ when: node.when, next: node.then }] : [])
+          let matched = -1
+          for (let i = 0; i < cases.length; i++) {
+            if (evaluateWhen(cases[i].when ?? {}, context)) {
+              matched = i
+              break
+            }
+          }
           this.events.push({
             kind: 'info',
             icon: 'pi pi-filter',
-            text: `Condición: ${result ? 'Sí' : 'No'}`,
+            text:
+              matched >= 0
+                ? `Condición: caso ${matched + 1} (${describeWhenShort(cases[matched].when)})`
+                : 'Condición: ningún caso aplicó → Si no…',
           })
-          nodeId = (result ? node.then : node.else) ?? null
+          nodeId = (matched >= 0 ? cases[matched].next : node.else) ?? null
           break
         }
         case 'random': {
@@ -352,8 +362,17 @@ function resolvePath(path: string, context: Record<string, unknown>): string {
   return value == null ? '' : String(value)
 }
 
-function evaluateCondition(node: FlowNodeDef, context: Record<string, unknown>): boolean {
-  const when = node.when ?? {}
+function describeWhenShort(when: FlowNodeDef['when']): string {
+  if (!when) return '¿?'
+  if (when.tag) return `tag ${when.tag}`
+  if (when.not_tag) return `sin tag ${when.not_tag}`
+  return when.field ?? '¿?'
+}
+
+function evaluateWhen(
+  when: NonNullable<FlowNodeDef['when']>,
+  context: Record<string, unknown>,
+): boolean {
   const tags = ((context.contact as Record<string, unknown>)?.tags ?? []) as string[]
   if (when.tag !== undefined) return tags.includes(String(when.tag))
   if (when.not_tag !== undefined) return !tags.includes(String(when.not_tag))

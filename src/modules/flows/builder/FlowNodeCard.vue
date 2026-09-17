@@ -68,7 +68,12 @@ function pillLabel(path: string): string {
 const logicSummary = computed(() => {
   const def = props.data.def
   if (def.type === 'delay') return formatMinutes(def.minutes ?? 0)
-  if (def.type === 'condition') return describeWhen()
+  if (def.type === 'condition') {
+    const count = def.cases?.length ?? (def.when ? 1 : 0)
+    return count > 1
+      ? `${count} casos, en orden — gana el primero que aplique`
+      : describeWhen()
+  }
   if (def.type === 'random') return `Reparte el tráfico en ${def.branches?.length ?? 0} ramas`
   return ''
 })
@@ -80,7 +85,7 @@ function formatMinutes(minutes: number): string {
 }
 
 function describeWhen(): string {
-  const when = props.data.def.when ?? {}
+  const when = props.data.def.when ?? props.data.def.cases?.[0]?.when ?? {}
   if (when.tag) return `¿Tiene el tag «${when.tag}»?`
   if (when.not_tag) return `¿NO tiene el tag «${when.not_tag}»?`
   if (when.field) {
@@ -138,7 +143,9 @@ const MEDIA_ICONS = {
 } as const
 
 function handleColor(handleId: string): string {
-  if (props.data.def.type === 'condition') return handleId === 'then' ? '#22c55e' : '#f87171'
+  if (props.data.def.type === 'condition') {
+    return handleId === 'else' ? '#f87171' : '#22c55e'
+  }
   return meta.value.accent
 }
 </script>

@@ -89,7 +89,9 @@ export interface FlowNodeDef {
   // cta_url
   url?: string
   button?: string
-  // condition
+  // condition: multi-rama (`cases` en orden, primer match gana, si no `else`)
+  // o la forma clasica when+then/else (legacy, el motor soporta ambas).
+  cases?: { when: ConditionWhen; next?: string | null }[]
   when?: ConditionWhen
   then?: string | null
   else?: string | null
