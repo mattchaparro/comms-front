@@ -11,6 +11,23 @@ export interface Conversation {
   last_direction: 'in' | 'out'
   last_at: string
   window_open: boolean
+  unread: boolean
+  assigned_to: string | null
+  assigned_name: string | null
+}
+
+export interface ConversationList {
+  items: Conversation[]
+  /** Sin leer en TODO el scope, no solo en esta página. */
+  unread_total: number
+  has_more: boolean
+}
+
+export interface ChatMediaSend {
+  kind: 'image' | 'video' | 'audio' | 'document'
+  url: string
+  caption?: string
+  filename?: string
 }
 
 export interface ChatTemplateSend {

@@ -14,35 +14,85 @@ import { useToast } from 'primevue/usetoast'
 import { computed, nextTick, ref, watch } from 'vue'
 
 import { fetchCommsApps } from '@/modules/commsCore/services/commsCoreService'
+import { uploadMedia } from '@/modules/flows/services/flowsService'
 import TemplatePreview from '@/modules/templates/components/TemplatePreview.vue'
 import { fetchTemplates } from '@/modules/templates/services/templatesService'
+import { fetchPanelUsers } from '@/modules/users/services/usersService'
+import { useAuthStore } from '@/stores/auth.store'
 import type { Conversation } from '@/types/chat'
 import type { WhatsAppTemplate } from '@/types/templates'
 
 import {
+  assignConversation,
   fetchConversations,
   fetchThread,
+  markConversationRead,
+  sendChatMedia,
   sendChatMessage,
   sendChatTemplate,
 } from '../services/chatService'
 
 const toast = useToast()
 const queryClient = useQueryClient()
+const auth = useAuthStore()
 
 const { data: apps } = useQuery({ queryKey: ['comms-apps'] as const, queryFn: fetchCommsApps })
 const appOptions = computed(() => (apps.value ?? []).map((app) => app.app_id))
 const appFilter = ref<string | null>(null)
+const search = ref('')
+const onlyUnread = ref(false)
 
-const { data: conversations, isLoading } = useQuery({
-  queryKey: ['chats', appFilter] as const,
-  queryFn: () => fetchConversations(appFilter.value ?? undefined),
+const { data: inbox, isLoading } = useQuery({
+  queryKey: computed(() => ['chats', appFilter.value, search.value, onlyUnread.value] as const),
+  queryFn: () =>
+    fetchConversations({
+      appId: appFilter.value ?? undefined,
+      q: search.value,
+      onlyUnread: onlyUnread.value,
+    }),
   refetchInterval: 5000,
 })
 
+const conversations = computed(() => inbox.value?.items ?? [])
+const unreadTotal = computed(() => inbox.value?.unread_total ?? 0)
+
 const selectedId = ref<string | null>(null)
 const selected = computed<Conversation | null>(
-  () => (conversations.value ?? []).find((c) => c.contact_id === selectedId.value) ?? null,
+  () => conversations.value.find((c) => c.contact_id === selectedId.value) ?? null,
 )
+
+// Abrir un hilo lo marca leído: es lo que hace que el contador signifique
+// "hay gente esperando" y no "hay conversaciones".
+async function openConversation(contactId: string): Promise<void> {
+  selectedId.value = contactId
+  try {
+    await markConversationRead(contactId)
+    queryClient.invalidateQueries({ queryKey: ['chats'] })
+  } catch {
+    // Que falle marcar leído no puede impedir leer.
+  }
+}
+
+// -- Quién atiende --------------------------------------------------------
+
+const { data: panelUsers } = useQuery({
+  queryKey: ['panel-users'] as const,
+  queryFn: fetchPanelUsers,
+  // Solo la plataforma puede listar usuarios; un cliente externo ve el
+  // nombre de quien atiende, pero no reasigna.
+  enabled: computed(() => auth.isPlatform),
+})
+
+const assignOptions = computed(() => [
+  { label: 'Sin asignar', value: null },
+  ...(panelUsers.value ?? []).map((u) => ({ label: u.full_name || u.email, value: u.id })),
+])
+
+const assignMutation = useMutation({
+  mutationFn: (userId: string | null) => assignConversation(selectedId.value!, userId),
+  onSuccess: () => queryClient.invalidateQueries({ queryKey: ['chats'] }),
+  onError: () => toast.add({ severity: 'error', summary: 'No se pudo asignar', life: 4000 }),
+})
 
 const { data: thread } = useQuery({
   queryKey: computed(() => ['chat-thread', selectedId.value] as const),
@@ -79,6 +129,41 @@ const sendMutation = useMutation({
 function send(): void {
   if (!reply.value.trim() || !selectedId.value || sendMutation.isPending.value) return
   sendMutation.mutate()
+}
+
+// -- Adjuntar una imagen -------------------------------------------------
+
+const fileInput = ref<HTMLInputElement | null>(null)
+const uploading = ref(false)
+
+async function attach(event: Event): Promise<void> {
+  const input = event.target as HTMLInputElement
+  const file = input.files?.[0]
+  input.value = '' // permite volver a elegir el mismo archivo
+  if (!file || !selectedId.value) return
+
+  uploading.value = true
+  try {
+    // Meta descarga el archivo por link público: primero vive en comms
+    // (/v1/admin/media) y después se manda la URL.
+    const { url } = await uploadMedia(file)
+    const message = await sendChatMedia(selectedId.value, {
+      kind: file.type.startsWith('image/') ? 'image' : 'document',
+      url,
+      caption: reply.value.trim() || undefined,
+      filename: file.name,
+    })
+    reply.value = ''
+    queryClient.invalidateQueries({ queryKey: ['chat-thread', selectedId.value] })
+    queryClient.invalidateQueries({ queryKey: ['chats'] })
+    if (message.status !== 'sent') {
+      toast.add({ severity: 'warn', summary: 'WhatsApp no lo entregó', life: 6000 })
+    }
+  } catch {
+    toast.add({ severity: 'error', summary: 'No se pudo enviar el archivo', life: 5000 })
+  } finally {
+    uploading.value = false
+  }
 }
 
 // -- Plantillas: la unica salida cuando la ventana de 24h ya cerro --------
@@ -178,7 +263,16 @@ function shortTime(iso: string): string {
   <div class="flex h-[calc(100vh-7.5rem)] min-h-[480px] flex-col">
     <div class="mb-4 flex items-center justify-between gap-3">
       <div>
-        <h1 class="text-2xl font-bold text-slate-900">Chat</h1>
+        <h1 class="flex items-center gap-2 text-2xl font-bold text-slate-900">
+          Chat
+          <span
+            v-if="unreadTotal"
+            class="rounded-full bg-teal-600 px-2 py-0.5 text-xs font-semibold text-white"
+            :title="`${unreadTotal} sin responder`"
+          >
+            {{ unreadTotal }}
+          </span>
+        </h1>
         <p class="mt-1 text-sm text-slate-500">
           La conversación de WhatsApp del negocio, en vivo: lo que escribe la clienta, lo que
           responde el bot, y tus respuestas — sin necesitar el celular.
@@ -190,21 +284,53 @@ function shortTime(iso: string): string {
     <div class="flex min-h-0 flex-1 overflow-hidden rounded-xl border border-slate-200 bg-white">
       <!-- conversaciones -->
       <aside class="flex w-72 shrink-0 flex-col border-r border-slate-200">
+        <div class="shrink-0 border-b border-slate-100 p-2">
+          <InputText
+            v-model="search"
+            placeholder="Buscar por nombre, teléfono o texto…"
+            fluid
+            class="!text-xs"
+          />
+          <button
+            type="button"
+            class="mt-1.5 w-full rounded px-2 py-1 text-left text-[11px] transition-colors"
+            :class="onlyUnread ? 'bg-teal-50 text-teal-700' : 'text-slate-500 hover:bg-slate-50'"
+            @click="onlyUnread = !onlyUnread"
+          >
+            <i class="pi pi-inbox mr-1 text-[10px]" />
+            {{ onlyUnread ? 'Viendo solo sin responder' : 'Ver solo sin responder' }}
+          </button>
+        </div>
+
         <div v-if="isLoading" class="p-4 text-sm text-slate-400">Cargando…</div>
-        <div v-else-if="!(conversations ?? []).length" class="p-4 text-sm text-slate-400">
-          Sin conversaciones todavía: aparecen con el primer mensaje entrante.
+        <div v-else-if="!conversations.length" class="p-4 text-sm text-slate-400">
+          {{
+            search || onlyUnread
+              ? 'Nada coincide con lo que buscas.'
+              : 'Sin conversaciones todavía: aparecen con el primer mensaje entrante.'
+          }}
         </div>
         <div class="min-h-0 flex-1 overflow-y-auto">
           <button
-            v-for="convo in conversations ?? []"
+            v-for="convo in conversations"
             :key="convo.contact_id"
             type="button"
             class="flex w-full flex-col gap-0.5 border-b border-slate-50 px-3 py-2.5 text-left transition-colors"
             :class="convo.contact_id === selectedId ? 'bg-teal-50' : 'hover:bg-slate-50'"
-            @click="selectedId = convo.contact_id"
+            @click="openConversation(convo.contact_id)"
           >
             <span class="flex items-center gap-2">
-              <span class="truncate text-sm font-semibold text-slate-800">
+              <!-- El punto teal es "te están esperando": lo único que hace
+                   que la lista se lea de un vistazo. -->
+              <span
+                v-if="convo.unread"
+                class="h-1.5 w-1.5 shrink-0 rounded-full bg-teal-600"
+                title="Sin responder"
+              />
+              <span
+                class="truncate text-sm text-slate-800"
+                :class="convo.unread ? 'font-bold' : 'font-semibold'"
+              >
                 {{ convo.name || convo.phone }}
               </span>
               <span
@@ -219,6 +345,9 @@ function shortTime(iso: string): string {
             <span class="truncate text-xs text-slate-500">
               <i v-if="convo.last_direction === 'out'" class="pi pi-reply mr-1 text-[9px]" />
               {{ convo.last_body || '(multimedia)' }}
+            </span>
+            <span v-if="convo.assigned_name" class="truncate text-[10px] text-teal-700">
+              <i class="pi pi-user mr-1 text-[9px]" />{{ convo.assigned_name }}
             </span>
           </button>
         </div>
@@ -235,8 +364,24 @@ function shortTime(iso: string): string {
               <p class="truncate text-sm font-semibold text-slate-800">{{ selected.name || selected.phone }}</p>
               <p class="text-[11px] text-slate-400">{{ selected.phone }} · {{ selected.app_id }}</p>
             </div>
+            <!-- Quién atiende: no bloquea a nadie, avisa. Un cliente
+                 externo lo ve pero no reasigna (no lista usuarios). -->
+            <Select
+              v-if="auth.isPlatform"
+              :model-value="selected.assigned_to"
+              :options="assignOptions"
+              option-label="label"
+              option-value="value"
+              placeholder="Sin asignar"
+              class="ml-auto !text-xs"
+              :loading="assignMutation.isPending.value"
+              @update:model-value="assignMutation.mutate($event)"
+            />
+            <span v-else-if="selected.assigned_name" class="ml-auto text-xs text-teal-700">
+              <i class="pi pi-user mr-1 text-[10px]" />{{ selected.assigned_name }}
+            </span>
             <Tag
-              class="ml-auto"
+              :class="auth.isPlatform ? '' : 'ml-auto'"
               :severity="selected.window_open ? 'success' : 'secondary'"
               :value="selected.window_open ? 'Ventana 24h abierta' : 'Ventana cerrada'"
             />
@@ -311,6 +456,15 @@ function shortTime(iso: string): string {
               <strong>plantilla</strong> aprobada.
             </p>
             <div class="flex items-center gap-2">
+              <input ref="fileInput" type="file" class="hidden" accept="image/*,.pdf" @change="attach" />
+              <Button
+                icon="pi pi-paperclip"
+                severity="secondary"
+                outlined
+                :loading="uploading"
+                title="Adjuntar imagen o PDF (el texto escrito va como pie)"
+                @click="fileInput?.click()"
+              />
               <Button
                 icon="pi pi-file"
                 :severity="selected.window_open ? 'secondary' : 'warn'"
