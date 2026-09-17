@@ -13,6 +13,13 @@ export interface Conversation {
   window_open: boolean
 }
 
+export interface ChatTemplateSend {
+  name: string
+  language: string
+  /** Un texto por cada {{1}}, {{2}}... del cuerpo. */
+  params: string[]
+}
+
 export interface ChatMessage {
   id: string
   direction: 'in' | 'out'

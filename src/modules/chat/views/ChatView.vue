@@ -6,6 +6,7 @@
 // polling corto (tiempo real de verdad queda para un websocket futuro).
 import { useMutation, useQuery, useQueryClient } from '@tanstack/vue-query'
 import Button from 'primevue/button'
+import Dialog from 'primevue/dialog'
 import InputText from 'primevue/inputtext'
 import Select from 'primevue/select'
 import Tag from 'primevue/tag'
@@ -13,9 +14,17 @@ import { useToast } from 'primevue/usetoast'
 import { computed, nextTick, ref, watch } from 'vue'
 
 import { fetchCommsApps } from '@/modules/commsCore/services/commsCoreService'
+import TemplatePreview from '@/modules/templates/components/TemplatePreview.vue'
+import { fetchTemplates } from '@/modules/templates/services/templatesService'
 import type { Conversation } from '@/types/chat'
+import type { WhatsAppTemplate } from '@/types/templates'
 
-import { fetchConversations, fetchThread, sendChatMessage } from '../services/chatService'
+import {
+  fetchConversations,
+  fetchThread,
+  sendChatMessage,
+  sendChatTemplate,
+} from '../services/chatService'
 
 const toast = useToast()
 const queryClient = useQueryClient()
@@ -71,6 +80,82 @@ function send(): void {
   if (!reply.value.trim() || !selectedId.value || sendMutation.isPending.value) return
   sendMutation.mutate()
 }
+
+// -- Plantillas: la unica salida cuando la ventana de 24h ya cerro --------
+
+const templateDialog = ref(false)
+const chosenTemplate = ref<WhatsAppTemplate | null>(null)
+const templateParams = ref<string[]>([])
+
+const { data: templates } = useQuery({
+  queryKey: computed(() => ['chat-templates', selected.value?.app_id] as const),
+  queryFn: () => fetchTemplates(selected.value?.app_id),
+  enabled: computed(() => templateDialog.value && selected.value !== null),
+})
+
+// Solo las aprobadas: Meta rechaza el resto, y ofrecerlas es prometerle al
+// operador un envio que no va a salir.
+const sendableTemplates = computed(() =>
+  (templates.value ?? []).filter((t) => t.status === 'APPROVED'),
+)
+
+function bodyOf(template: WhatsAppTemplate): string {
+  const body = template.components.find((c) => String(c.type).toUpperCase() === 'BODY')
+  return typeof body?.text === 'string' ? body.text : ''
+}
+
+/** Cuantas variables pide el cuerpo: el mayor {{n}} que aparezca. */
+function paramCount(template: WhatsAppTemplate): number {
+  const found = [...bodyOf(template).matchAll(/\{\{(\d+)\}\}/g)].map((m) => Number(m[1]))
+  return found.length ? Math.max(...found) : 0
+}
+
+/** La etiqueta del campo. Se arma acá: las llaves dobles dentro de una
+ * interpolación de Vue rompen el parser de plantillas. */
+function paramLabel(index: number): string {
+  return `{{${index + 1}}}`
+}
+
+function pickTemplate(template: WhatsAppTemplate): void {
+  chosenTemplate.value = template
+  templateParams.value = Array.from({ length: paramCount(template) }, () => '')
+}
+
+function openTemplates(): void {
+  chosenTemplate.value = null
+  templateParams.value = []
+  templateDialog.value = true
+}
+
+const templateReady = computed(
+  () => chosenTemplate.value !== null && templateParams.value.every((p) => p.trim().length > 0),
+)
+
+const templateMutation = useMutation({
+  mutationFn: () =>
+    sendChatTemplate(selectedId.value!, {
+      name: chosenTemplate.value!.name,
+      language: chosenTemplate.value!.language,
+      params: templateParams.value.map((p) => p.trim()),
+    }),
+  onSuccess: (message) => {
+    templateDialog.value = false
+    queryClient.invalidateQueries({ queryKey: ['chat-thread', selectedId.value] })
+    queryClient.invalidateQueries({ queryKey: ['chats'] })
+    toast.add({
+      severity: message.status === 'sent' ? 'success' : 'warn',
+      summary: message.status === 'sent' ? 'Plantilla enviada' : 'WhatsApp no la entregó',
+      life: 5000,
+    })
+  },
+  onError: (error: unknown) => {
+    // El 409 del backend trae el motivo real (plantilla no aprobada).
+    const detail =
+      (error as { response?: { data?: { detail?: string } } })?.response?.data?.detail ??
+      'No se pudo enviar la plantilla.'
+    toast.add({ severity: 'error', summary: 'No se envió', detail, life: 8000 })
+  },
+})
 
 const MEDIA_ICONS: Record<string, string> = {
   image: 'pi pi-image',
@@ -211,15 +296,38 @@ function shortTime(iso: string): string {
             </div>
           </div>
 
-          <div class="flex shrink-0 items-center gap-2 border-t border-slate-100 p-3">
-            <InputText
-              v-model="reply"
-              :placeholder="selected.window_open ? 'Escribe tu respuesta…' : 'Ventana cerrada: WhatsApp puede rechazar texto libre'"
-              fluid
-              class="!text-sm"
-              @keyup.enter="send"
-            />
-            <Button icon="pi pi-send" :loading="sendMutation.isPending.value" @click="send" />
+          <div class="shrink-0 border-t border-slate-100 p-3">
+            <!--
+              Ventana cerrada: el texto libre NO se entrega (Meta lo acepta y
+              lo descarta). Decirlo aquí, con el botón de plantilla al lado,
+              es la diferencia entre rescatar la conversación y creer que se
+              contestó.
+            -->
+            <p
+              v-if="!selected.window_open"
+              class="mb-2 rounded-md bg-amber-50 px-3 py-2 text-[11px] text-amber-800"
+            >
+              Pasaron más de 24 horas desde su último mensaje: WhatsApp solo entrega una
+              <strong>plantilla</strong> aprobada.
+            </p>
+            <div class="flex items-center gap-2">
+              <Button
+                icon="pi pi-file"
+                :severity="selected.window_open ? 'secondary' : 'warn'"
+                :outlined="selected.window_open"
+                label="Plantilla"
+                class="!text-xs"
+                @click="openTemplates"
+              />
+              <InputText
+                v-model="reply"
+                :placeholder="selected.window_open ? 'Escribe tu respuesta…' : 'Ventana cerrada: usa una plantilla'"
+                fluid
+                class="!text-sm"
+                @keyup.enter="send"
+              />
+              <Button icon="pi pi-send" :loading="sendMutation.isPending.value" @click="send" />
+            </div>
           </div>
         </template>
 
@@ -228,5 +336,66 @@ function shortTime(iso: string): string {
         </div>
       </div>
     </div>
+
+    <Dialog
+      v-model:visible="templateDialog"
+      modal
+      header="Enviar una plantilla"
+      class="w-[44rem] max-w-[95vw]"
+    >
+      <p class="mb-3 text-xs text-slate-500">
+        Solo se listan las plantillas <strong>aprobadas</strong> por Meta de esta app. Se cobran
+        como utility.
+      </p>
+
+      <div v-if="!sendableTemplates.length" class="rounded-md bg-slate-50 p-4 text-sm text-slate-500">
+        No hay plantillas aprobadas todavía. Créalas y sincronízalas en la pantalla de Plantillas.
+      </div>
+
+      <div v-else class="grid gap-4 md:grid-cols-2">
+        <div class="max-h-72 overflow-y-auto rounded-lg border border-slate-200">
+          <button
+            v-for="template in sendableTemplates"
+            :key="template.id"
+            type="button"
+            class="flex w-full flex-col gap-0.5 border-b border-slate-50 px-3 py-2 text-left"
+            :class="chosenTemplate?.id === template.id ? 'bg-teal-50' : 'hover:bg-slate-50'"
+            @click="pickTemplate(template)"
+          >
+            <span class="text-sm font-semibold text-slate-800">{{ template.name }}</span>
+            <span class="truncate text-[11px] text-slate-500">
+              {{ template.language }} · {{ bodyOf(template) || '(sin cuerpo)' }}
+            </span>
+          </button>
+        </div>
+
+        <div v-if="chosenTemplate" class="flex flex-col gap-3">
+          <TemplatePreview :components="chosenTemplate.components" :params="templateParams" />
+          <div v-if="templateParams.length" class="flex flex-col gap-2">
+            <label
+              v-for="(_, index) in templateParams"
+              :key="index"
+              class="flex items-center gap-2 text-xs text-slate-600"
+            >
+              <span class="w-12 shrink-0 font-mono">{{ paramLabel(index) }}</span>
+              <InputText v-model="templateParams[index]" fluid class="!text-sm" />
+            </label>
+          </div>
+          <p v-else class="text-xs text-slate-400">Esta plantilla no lleva variables.</p>
+        </div>
+        <p v-else class="self-center text-sm text-slate-400">Elige una plantilla para verla.</p>
+      </div>
+
+      <template #footer>
+        <Button label="Cancelar" severity="secondary" text @click="templateDialog = false" />
+        <Button
+          label="Enviar"
+          icon="pi pi-send"
+          :disabled="!templateReady"
+          :loading="templateMutation.isPending.value"
+          @click="templateMutation.mutate()"
+        />
+      </template>
+    </Dialog>
   </div>
 </template>
