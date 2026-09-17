@@ -73,6 +73,11 @@ const router = createRouter({
           component: () => import('@/modules/templates/views/TemplatesView.vue'),
         },
         {
+          path: 'chat',
+          name: 'chat',
+          component: () => import('@/modules/chat/views/ChatView.vue'),
+        },
+        {
           path: 'flujos',
           name: 'flows',
           component: () => import('@/modules/flows/views/FlowsView.vue'),
