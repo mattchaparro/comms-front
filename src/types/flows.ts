@@ -15,6 +15,7 @@ export type FlowNodeType =
   | 'template'
   | 'product'
   | 'blocks'
+  | 'actions'
 
 // Un bloque del paso "Enviar mensaje" (nodo `blocks`): cada uno es SU
 // PROPIO mensaje de WhatsApp, enviados seguidos. `wait` = pausa corta
@@ -76,12 +77,39 @@ export interface ConditionWhen {
   exists?: boolean
 }
 
+// Una accion del nodo Acciones ("Realiza las siguientes acciones..." de
+// ManyChat con el guardrail de Connect). `fields` es dict en set_fields y
+// lista en clear_fields (mismo nombre que usa el motor).
+export type FlowActionType =
+  | 'add_tags'
+  | 'remove_tags'
+  | 'set_fields'
+  | 'clear_fields'
+  | 'http_request'
+  | 'notify_app'
+  | 'start_flow'
+
+export interface FlowAction {
+  type: FlowActionType
+  tags?: string[]
+  fields?: Record<string, string> | string[]
+  method?: 'GET' | 'POST'
+  url?: string
+  headers?: Record<string, string>
+  body?: unknown
+  save?: Record<string, string>
+  message?: string
+  flow?: string
+}
+
 export interface FlowNodeDef {
   type: FlowNodeType
   // titulo del paso en el canvas ("Enviar mensaje #1"); el motor lo ignora
   title?: string
   // blocks (el paso "Enviar mensaje": pila de bloques de contenido)
   blocks?: MessageBlock[]
+  // actions (1-10 acciones en orden; start_flow solo de ultima)
+  actions?: FlowAction[]
   text?: string
   next?: string | null
   // buttons

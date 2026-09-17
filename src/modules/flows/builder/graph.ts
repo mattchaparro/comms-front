@@ -142,6 +142,14 @@ export const NODE_CATALOG: Record<
     headerBg: '#ffe4e6',
     description: 'Uno o varios productos del catálogo, comprables en el chat.',
   },
+  actions: {
+    // Amarillo, como las Acciones de ManyChat.
+    label: 'Acciones',
+    icon: 'pi pi-bolt',
+    accent: '#ca8a04',
+    headerBg: '#fef9c3',
+    description: 'Tags, campos, APIs externas, avisar a tu app o saltar de flujo.',
+  },
 }
 
 // --- definición -> grafo ------------------------------------------------------
@@ -475,6 +483,8 @@ export function defaultNodeDef(type: FlowNodeType): FlowNodeDef {
       return { type, text: '', retailer_id: '' }
     case 'blocks':
       return { type, blocks: [{ type: 'text', text: '' }] }
+    case 'actions':
+      return { type, actions: [{ type: 'add_tags', tags: [] }] }
   }
 }
 

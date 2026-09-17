@@ -27,7 +27,15 @@ import { fetchCommsApps } from '@/modules/commsCore/services/commsCoreService'
 import { fetchTemplates } from '@/modules/templates/services/templatesService'
 import TemplatePreview from '@/modules/templates/components/TemplatePreview.vue'
 import ConnectWordmark from '@/ui/ConnectWordmark.vue'
-import type { BlockType, FlowDefinition, FlowNodeDef, FlowNodeType, MessageBlock } from '@/types/flows'
+import type {
+  BlockType,
+  FlowAction,
+  FlowActionType,
+  FlowDefinition,
+  FlowNodeDef,
+  FlowNodeType,
+  MessageBlock,
+} from '@/types/flows'
 import type { WhatsAppTemplate } from '@/types/templates'
 
 import { createFlow, fetchFlows, updateFlow, uploadMedia } from '../services/flowsService'
@@ -543,6 +551,89 @@ const setFieldsText = computed({
     def.set_fields = fields
   },
 })
+
+// --- nodo actions: "Realiza las siguientes acciones..." ------------------------
+
+const ACTION_CATALOG: { type: FlowActionType; label: string; icon: string; description: string }[] = [
+  { type: 'add_tags', label: 'Añadir etiqueta', icon: 'pi pi-tag', description: 'Etiqueta el contacto para segmentarlo' },
+  { type: 'remove_tags', label: 'Eliminar etiqueta', icon: 'pi pi-tag', description: 'Quita etiquetas que ya no aplican' },
+  { type: 'set_fields', label: 'Establecer campo', icon: 'pi pi-pencil', description: 'Guarda datos en el contacto (admite variables)' },
+  { type: 'clear_fields', label: 'Borrar campo', icon: 'pi pi-eraser', description: 'Elimina datos almacenados' },
+  { type: 'http_request', label: 'Solicitud externa', icon: 'pi pi-arrow-right-arrow-left', description: 'Llama a la API de tu negocio y guarda la respuesta' },
+  { type: 'notify_app', label: 'Avisar a tu app', icon: 'pi pi-bell', description: 'Evento firmado al callback de la app dueña' },
+  { type: 'start_flow', label: 'Ir a otro flujo', icon: 'pi pi-directions', description: 'Salta a otro flujo (siempre la última acción)' },
+]
+
+function actionMeta(type: FlowActionType) {
+  return ACTION_CATALOG.find((a) => a.type === type)!
+}
+
+function defaultAction(type: FlowActionType): FlowAction {
+  switch (type) {
+    case 'add_tags':
+    case 'remove_tags':
+      return { type, tags: [] }
+    case 'set_fields':
+      return { type, fields: {} }
+    case 'clear_fields':
+      return { type, fields: [] }
+    case 'http_request':
+      return { type, method: 'GET', url: 'https://', save: {} }
+    case 'notify_app':
+      return { type, message: '' }
+    case 'start_flow':
+      return { type, flow: '' }
+  }
+}
+
+function addAction(type: FlowActionType): void {
+  const def = selectedNode.value?.data?.def
+  if (!def?.actions || def.actions.length >= 10) return
+  // start_flow siempre de ultima; lo demas entra antes de un start_flow.
+  const jumpIndex = def.actions.findIndex((a) => a.type === 'start_flow')
+  if (type === 'start_flow') {
+    if (jumpIndex !== -1) return
+    def.actions.push(defaultAction(type))
+  } else if (jumpIndex === -1) {
+    def.actions.push(defaultAction(type))
+  } else {
+    def.actions.splice(jumpIndex, 0, defaultAction(type))
+  }
+}
+
+function removeAction(index: number): void {
+  const def = selectedNode.value?.data?.def
+  if (!def?.actions || def.actions.length <= 1) return
+  def.actions.splice(index, 1)
+}
+
+// Listas/dicts como texto editable (coma o lineas k=v) - el mismo idioma
+// del resto del panel.
+function listAsText(value: unknown): string {
+  return Array.isArray(value) ? value.join(', ') : ''
+}
+function textAsList(value: string): string[] {
+  return value.split(',').map((s) => s.trim()).filter(Boolean)
+}
+function dictAsLines(value: unknown, sep = '='): string {
+  return value && typeof value === 'object'
+    ? Object.entries(value as Record<string, string>).map(([k, v]) => `${k}${sep}${v}`).join('\n')
+    : ''
+}
+function linesAsDict(value: string): Record<string, string> {
+  const out: Record<string, string> = {}
+  for (const line of value.split('\n')) {
+    const eq = line.indexOf('=')
+    if (eq > 0) out[line.slice(0, eq).trim()] = line.slice(eq + 1).trim()
+  }
+  return out
+}
+
+const flowJumpOptions = computed(() =>
+  (flows.value ?? [])
+    .filter((f) => f.app_id === (metaApp.value ?? '') && f.name !== metaName.value)
+    .map((f) => f.name),
+)
 
 // --- vista previa (simulador) -------------------------------------------------
 
@@ -1709,6 +1800,153 @@ const menuTypes = (
               <div class="flex flex-col gap-1.5">
                 <label class="text-xs font-medium text-slate-600">Texto del botón</label>
                 <InputText v-model="selectedNode.data!.def.button" placeholder="Abrir" fluid class="!text-sm" />
+              </div>
+            </template>
+
+            <!-- actions: "Realiza las siguientes acciones..." -->
+            <template v-if="selectedNode.data!.def.type === 'actions'">
+              <p class="text-xs font-medium text-slate-600">Realiza las siguientes acciones…</p>
+
+              <div
+                v-for="(action, aIndex) in selectedNode.data!.def.actions"
+                :key="aIndex"
+                class="flex flex-col gap-2 rounded-xl border border-slate-200 p-2.5"
+              >
+                <div class="flex items-center gap-1.5">
+                  <i :class="actionMeta(action.type).icon" class="text-[11px] text-yellow-600" />
+                  <span class="text-[11px] font-semibold uppercase tracking-wide text-slate-500">
+                    {{ actionMeta(action.type).label }}
+                  </span>
+                  <button
+                    type="button"
+                    class="ml-auto rounded p-1 text-slate-300 hover:text-red-500"
+                    title="Quitar acción"
+                    :disabled="selectedNode.data!.def.actions!.length <= 1"
+                    @click="removeAction(aIndex)"
+                  >
+                    <i class="pi pi-times text-[10px]" />
+                  </button>
+                </div>
+
+                <InputText
+                  v-if="action.type === 'add_tags' || action.type === 'remove_tags'"
+                  :model-value="listAsText(action.tags)"
+                  placeholder="vip, consulto_precio (coma)"
+                  fluid
+                  class="!text-sm"
+                  @update:model-value="(v) => (action.tags = textAsList(v ?? ''))"
+                />
+
+                <Textarea
+                  v-if="action.type === 'set_fields'"
+                  :model-value="dictAsLines(action.fields)"
+                  rows="2"
+                  auto-resize
+                  fluid
+                  class="!text-sm font-mono"
+                  placeholder="sede=norte&#10;origen={{contact.fields.origen}}"
+                  @update:model-value="(v) => (action.fields = linesAsDict(v ?? ''))"
+                />
+
+                <InputText
+                  v-if="action.type === 'clear_fields'"
+                  :model-value="listAsText(action.fields)"
+                  placeholder="campo1, campo2 (coma)"
+                  fluid
+                  class="!text-sm font-mono"
+                  @update:model-value="(v) => (action.fields = textAsList(v ?? ''))"
+                />
+
+                <template v-if="action.type === 'http_request'">
+                  <div class="flex gap-1.5">
+                    <Select
+                      v-model="action.method"
+                      :options="['GET', 'POST']"
+                      class="w-24 !text-sm"
+                    />
+                    <InputText v-model="action.url" placeholder="https://api.tunegocio.co/…" fluid class="flex-1 !text-sm font-mono" />
+                  </div>
+                  <Textarea
+                    v-if="action.method === 'POST'"
+                    :model-value="typeof action.body === 'string' ? action.body : action.body ? JSON.stringify(action.body, null, 1) : ''"
+                    rows="3"
+                    auto-resize
+                    fluid
+                    class="!text-xs font-mono"
+                    placeholder='{"telefono": "{{contact.phone}}"}'
+                    @update:model-value="
+                      (v) => {
+                        try {
+                          action.body = v ? JSON.parse(v) : undefined
+                        } catch {
+                          action.body = v
+                        }
+                      }
+                    "
+                  />
+                  <label class="text-[11px] font-medium text-slate-500">
+                    Guardar de la respuesta <span class="font-normal text-slate-400">(campo=ruta.del.json, por línea)</span>
+                  </label>
+                  <Textarea
+                    :model-value="dictAsLines(action.save)"
+                    rows="2"
+                    auto-resize
+                    fluid
+                    class="!text-xs font-mono"
+                    placeholder="proxima_hora=disponible.hora"
+                    @update:model-value="(v) => (action.save = linesAsDict(v ?? ''))"
+                  />
+                  <p class="text-[10px] leading-snug text-slate-400">
+                    Si la API falla, el flujo sigue (queda en el log). Luego usas
+                    <code v-pre>{{contact.fields.tu_campo}}</code>.
+                  </p>
+                </template>
+
+                <template v-if="action.type === 'notify_app'">
+                  <Textarea
+                    v-model="action.message"
+                    rows="2"
+                    auto-resize
+                    fluid
+                    class="!text-sm"
+                    placeholder="{{contact.name}} pidió hablar con una persona"
+                  />
+                  <p class="text-[10px] leading-snug text-slate-400">
+                    Llega como evento <code>flow_notify</code> firmado al callback de la app dueña.
+                  </p>
+                </template>
+
+                <Select
+                  v-if="action.type === 'start_flow'"
+                  v-model="action.flow"
+                  :options="flowJumpOptions"
+                  editable
+                  placeholder="Nombre del flujo destino"
+                  fluid
+                  class="!text-sm"
+                />
+              </div>
+
+              <div class="flex flex-col gap-1.5">
+                <p class="text-[11px] text-slate-500">Añade una acción:</p>
+                <button
+                  v-for="item in ACTION_CATALOG"
+                  :key="item.type"
+                  type="button"
+                  class="flex items-start gap-2.5 rounded-xl border border-dashed border-slate-300 px-3 py-1.5 text-left transition-colors hover:border-yellow-500 hover:bg-yellow-50/40 disabled:cursor-not-allowed disabled:opacity-40"
+                  :disabled="
+                    (selectedNode.data!.def.actions?.length ?? 0) >= 10 ||
+                    (item.type === 'start_flow' &&
+                      selectedNode.data!.def.actions!.some((a) => a.type === 'start_flow'))
+                  "
+                  @click="addAction(item.type)"
+                >
+                  <i :class="item.icon" class="mt-0.5 text-xs text-yellow-600" />
+                  <span class="min-w-0">
+                    <span class="block text-[13px] font-medium text-slate-700">{{ item.label }}</span>
+                    <span class="block text-[11px] leading-tight text-slate-400">{{ item.description }}</span>
+                  </span>
+                </button>
               </div>
             </template>
 

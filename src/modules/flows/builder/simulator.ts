@@ -170,6 +170,95 @@ export class FlowSimulator {
           })
           nodeId = node.next ?? null
           break
+        case 'actions': {
+          // Las acciones se muestran como chips; la solicitud externa NO se
+          // llama en el ensayo (el mock no puede pegarle a tu API real).
+          let jumped = false
+          for (const action of node.actions ?? []) {
+            switch (action.type) {
+              case 'add_tags':
+                this.contact.tags = [...new Set([...this.contact.tags, ...(action.tags ?? [])])]
+                this.events.push({
+                  kind: 'info',
+                  icon: 'pi pi-tag',
+                  text: (action.tags ?? []).map((t) => `+${t}`).join('  '),
+                })
+                break
+              case 'remove_tags': {
+                const gone = new Set(action.tags ?? [])
+                this.contact.tags = this.contact.tags.filter((t) => !gone.has(t))
+                this.events.push({
+                  kind: 'info',
+                  icon: 'pi pi-tag',
+                  text: (action.tags ?? []).map((t) => `−${t}`).join('  '),
+                })
+                break
+              }
+              case 'set_fields': {
+                const fields = (action.fields ?? {}) as Record<string, string>
+                const applied = Object.fromEntries(
+                  Object.entries(fields).map(([k, v]) => [k, interpolate(String(v), this.context())]),
+                )
+                this.contact.fields = { ...this.contact.fields, ...applied }
+                this.events.push({
+                  kind: 'info',
+                  icon: 'pi pi-pencil',
+                  text: `Campos: ${Object.keys(applied).join(', ')}`,
+                })
+                break
+              }
+              case 'clear_fields': {
+                const gone = new Set((action.fields ?? []) as string[])
+                this.contact.fields = Object.fromEntries(
+                  Object.entries(this.contact.fields).filter(([k]) => !gone.has(k)),
+                )
+                this.events.push({ kind: 'info', icon: 'pi pi-eraser', text: `Borrados: ${[...gone].join(', ')}` })
+                break
+              }
+              case 'http_request': {
+                let host = action.url ?? ''
+                try {
+                  host = new URL(interpolate(action.url ?? '', this.context())).host
+                } catch {
+                  /* url a medias */
+                }
+                const saved = Object.keys(action.save ?? {})
+                for (const campo of saved) {
+                  this.contact.fields = { ...this.contact.fields, [campo]: `⟨respuesta de ${host}⟩` }
+                }
+                this.events.push({
+                  kind: 'info',
+                  icon: 'pi pi-arrow-right-arrow-left',
+                  text: `Solicitud externa a ${host} — no se llama en el ensayo${saved.length ? `; guardaría: ${saved.join(', ')}` : ''}`,
+                })
+                break
+              }
+              case 'notify_app':
+                this.events.push({
+                  kind: 'info',
+                  icon: 'pi pi-bell',
+                  text: `Aviso a tu app: «${interpolate(action.message ?? '', this.context()).slice(0, 60)}»`,
+                })
+                break
+              case 'start_flow':
+                this.events.push({
+                  kind: 'info',
+                  icon: 'pi pi-directions',
+                  text: `Salta al flujo «${action.flow}» (el ensayo termina aquí)`,
+                })
+                jumped = true
+                break
+            }
+            if (jumped) break
+          }
+          if (jumped) {
+            this.current = null
+            this.waiting = null
+            return
+          }
+          nodeId = node.next ?? null
+          break
+        }
         case 'blocks': {
           // El paso "Enviar mensaje": cada bloque como su propio mensaje.
           const options: { id: string; title: string; description?: string }[] = []

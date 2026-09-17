@@ -97,6 +97,40 @@ function describeWhen(): string {
   return 'Condición sin configurar'
 }
 
+// Las lineas del nodo Acciones: una por accion, en su idioma.
+const actionLines = computed(() => {
+  const def = props.data.def
+  if (def.type !== 'actions') return []
+  return (def.actions ?? []).map((action) => {
+    switch (action.type) {
+      case 'add_tags':
+        return { icon: 'pi pi-tag', text: (action.tags ?? []).map((t) => `+${t}`).join(' ') || '+…' }
+      case 'remove_tags':
+        return { icon: 'pi pi-tag', text: (action.tags ?? []).map((t) => `−${t}`).join(' ') || '−…' }
+      case 'set_fields':
+        return {
+          icon: 'pi pi-pencil',
+          text: `Fijar: ${Object.keys((action.fields as Record<string, string>) ?? {}).join(', ') || '…'}`,
+        }
+      case 'clear_fields':
+        return { icon: 'pi pi-eraser', text: `Borrar: ${((action.fields as string[]) ?? []).join(', ') || '…'}` }
+      case 'http_request': {
+        let host = action.url ?? ''
+        try {
+          host = new URL(action.url ?? '').host
+        } catch {
+          /* url a medias mientras se escribe */
+        }
+        return { icon: 'pi pi-arrow-right-arrow-left', text: `Solicitud externa: ${host || '…'}` }
+      }
+      case 'notify_app':
+        return { icon: 'pi pi-bell', text: `Avisar a tu app` }
+      case 'start_flow':
+        return { icon: 'pi pi-directions', text: `Ir al flujo «${action.flow || '…'}»` }
+    }
+  })
+})
+
 const effects = computed(() => {
   const def = props.data.def
   return [
@@ -366,6 +400,17 @@ function handleColor(handleId: string): string {
           <i class="pi pi-shopping-bag mr-1 text-[10px]" />{{ productSummary }}
         </p>
       </template>
+
+      <!-- nodo acciones: la lista de acciones -->
+      <div v-else-if="data.def.type === 'actions'" class="flex flex-col gap-1">
+        <p
+          v-for="(line, index) in actionLines"
+          :key="index"
+          class="truncate text-[11px] font-medium text-slate-600"
+        >
+          <i :class="line.icon" class="mr-1.5 text-[10px] text-yellow-600" />{{ line.text }}
+        </p>
+      </div>
 
       <!-- nodos de logica: resumen plano -->
       <p v-else class="text-xs font-medium leading-relaxed text-slate-600">{{ logicSummary }}</p>
