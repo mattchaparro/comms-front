@@ -22,6 +22,7 @@ import { useAuthStore } from '@/stores/auth.store'
 import type { Conversation } from '@/types/chat'
 import type { WhatsAppTemplate } from '@/types/templates'
 
+import InboxAlertsDialog from '../components/InboxAlertsDialog.vue'
 import {
   assignConversation,
   fetchConversations,
@@ -41,6 +42,7 @@ const appOptions = computed(() => (apps.value ?? []).map((app) => app.app_id))
 const appFilter = ref<string | null>(null)
 const search = ref('')
 const onlyUnread = ref(false)
+const alertsDialog = ref(false)
 
 const { data: inbox, isLoading } = useQuery({
   queryKey: computed(() => ['chats', appFilter.value, search.value, onlyUnread.value] as const),
@@ -278,8 +280,21 @@ function shortTime(iso: string): string {
           responde el bot, y tus respuestas — sin necesitar el celular.
         </p>
       </div>
-      <Select v-model="appFilter" :options="appOptions" placeholder="Todas las apps" show-clear class="w-48" />
+      <div class="flex items-center gap-2">
+        <Button
+          icon="pi pi-bell"
+          label="Avisos"
+          severity="secondary"
+          outlined
+          class="!text-xs"
+          title="A quién avisar cuando hay conversaciones sin responder"
+          @click="alertsDialog = true"
+        />
+        <Select v-model="appFilter" :options="appOptions" placeholder="Todas las apps" show-clear class="w-48" />
+      </div>
     </div>
+
+    <InboxAlertsDialog v-model:visible="alertsDialog" :apps="appOptions" :default-app="appFilter" />
 
     <div class="flex min-h-0 flex-1 overflow-hidden rounded-xl border border-slate-200 bg-white">
       <!-- conversaciones -->
