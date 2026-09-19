@@ -316,7 +316,17 @@ function shortTime(iso: string): string {
           title="A quién avisar cuando hay conversaciones sin responder"
           @click="alertsDialog = true"
         />
-        <Select v-model="appFilter" :options="appOptions" placeholder="Todas las apps" show-clear class="w-48" />
+        <!-- Un filtro con una sola opción no filtra nada: ocupa sitio y
+             hace dudar. Se ve cuando de verdad hay entre qué elegir, que
+             es el panel de Nexolú; dentro del panel de un negocio, no. -->
+        <Select
+          v-if="appOptions.length > 1"
+          v-model="appFilter"
+          :options="appOptions"
+          placeholder="Todas las apps"
+          show-clear
+          class="w-48"
+        />
       </div>
     </div>
 
