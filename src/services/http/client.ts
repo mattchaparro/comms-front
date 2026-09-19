@@ -3,6 +3,7 @@ import axios from 'axios'
 import router from '@/router'
 import { useFlashStore } from '@/stores/flash.store'
 
+import { embedToken } from './embedToken'
 import { tokenStorage } from './tokenStorage'
 
 declare module 'axios' {
@@ -30,7 +31,11 @@ export const httpClient = axios.create({
 })
 
 httpClient.interceptors.request.use((config) => {
-  const token = tokenStorage.get()
+  // La bandeja embebida manda el suyo, que vive solo en memoria y ve un
+  // solo negocio. Va primero para que una pestaña embebida NUNCA use por
+  // accidente la sesión de panel que haya en este navegador: son el mismo
+  // origen, y esa sesión puede ser de administrador.
+  const token = embedToken.get() ?? tokenStorage.get()
   if (token) {
     config.headers.Authorization = `Bearer ${token}`
   }
@@ -49,6 +54,18 @@ httpClient.interceptors.response.use(
 
     const status = error.response?.status
     const onLogin = router.currentRoute.value.name === 'login'
+
+    // Dentro de un iframe no hay a dónde mandar a nadie a iniciar sesión:
+    // la sesión es del panel que nos embebe, y él la renueva. Mandarlo al
+    // login pintaría un formulario de Connect dentro del Spa, que es
+    // exactamente lo que enseña a la gente a teclear su contraseña en un
+    // sitio que no es el que cree.
+    if (embedToken.active) {
+      if (status === 401) {
+        embedToken.clear()
+      }
+      return Promise.reject(error)
+    }
 
     if (status === 401 && !onLogin) {
       tokenStorage.clear()

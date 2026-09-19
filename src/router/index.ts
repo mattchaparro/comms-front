@@ -32,6 +32,20 @@ const router = createRouter({
       ],
     },
     {
+      /*
+       * La bandeja embebida en el panel de otra app (hoy, el Spa).
+       *
+       * Fuera del layout y SIN `requiresAuth` a propósito: quien entra no
+       * tiene sesión de Connect ni tiene por qué -- su cuenta está en el
+       * Spa, que le pide un token a Connect y nos lo pasa por la URL. Y
+       * sin el menú ni la cabecera del panel, que dentro del Spa serían
+       * una segunda navegación encima de la suya.
+       */
+      path: '/embebido/chat',
+      name: 'embedded-chat',
+      component: () => import('@/modules/chat/views/EmbeddedChatView.vue'),
+    },
+    {
       path: '/',
       component: () => import('@/layouts/AppLayout.vue'),
       meta: { requiresAuth: true },
@@ -123,6 +137,14 @@ const router = createRouter({
 })
 
 router.beforeEach(async (to) => {
+  /*
+   * La bandeja embebida no pasa por nada de esto. Su credencial viene en
+   * la URL y su sesión es la del panel que la embebe: rehidratar acá
+   * una sesión de Connect que hubiera en este navegador le daría al
+   * iframe permisos que no le tocan -- y son el mismo origen.
+   */
+  if (to.name === 'embedded-chat') return true
+
   const auth = useAuthStore()
 
   // Al volver de nexolu-auth hay una asercion esperando (la recogio

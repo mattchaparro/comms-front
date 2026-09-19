@@ -411,7 +411,12 @@ function shortTime(iso: string): string {
             </span>
             <div class="min-w-0">
               <p class="truncate text-sm font-semibold text-slate-800">{{ selected.name || selected.phone }}</p>
-              <p class="text-[11px] text-slate-400">{{ selected.phone }} · {{ selected.app_id }}</p>
+              <!-- La app solo se nombra si hay más de una a la vista. En la
+                   bandeja embebida en el panel de un negocio, "· spa" no le
+                   dice nada a nadie: ahí todo es spa. -->
+              <p class="text-[11px] text-slate-400">
+                {{ selected.phone }}<template v-if="appOptions.length > 1"> · {{ selected.app_id }}</template>
+              </p>
             </div>
             <!-- Quién atiende: no bloquea a nadie, avisa. Un cliente
                  externo lo ve pero no reasigna (no lista usuarios). -->
