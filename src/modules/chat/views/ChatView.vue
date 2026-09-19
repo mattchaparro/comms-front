@@ -361,6 +361,14 @@ function shortTime(iso: string): string {
               <i v-if="convo.last_direction === 'out'" class="pi pi-reply mr-1 text-[9px]" />
               {{ convo.last_body || '(multimedia)' }}
             </span>
+            <!--
+              De qué número es esta conversación. Una misma persona le puede
+              escribir a dos negocios distintos del ecosistema, y sin esto la
+              lista muestra su nombre dos veces sin explicar por qué.
+            -->
+            <span v-if="appOptions.length > 1" class="truncate text-[10px] text-slate-400">
+              {{ convo.app_id }}
+            </span>
             <span v-if="convo.assigned_name" class="truncate text-[10px] text-teal-700">
               <i class="pi pi-user mr-1 text-[9px]" />{{ convo.assigned_name }}
             </span>
