@@ -22,10 +22,12 @@ import { useAuthStore } from '@/stores/auth.store'
 import type { Conversation } from '@/types/chat'
 import type { WhatsAppTemplate } from '@/types/templates'
 
+import ContactSidebar from '../components/ContactSidebar.vue'
 import InboxAlertsDialog from '../components/InboxAlertsDialog.vue'
 import {
   assignConversation,
   fetchConversations,
+  fetchQuickReplies,
   fetchThread,
   markConversationRead,
   sendChatMedia,
@@ -131,6 +133,30 @@ const sendMutation = useMutation({
 function send(): void {
   if (!reply.value.trim() || !selectedId.value || sendMutation.isPending.value) return
   sendMutation.mutate()
+}
+
+// -- Respuestas guardadas: "/precios" ------------------------------------
+
+const { data: quickReplies } = useQuery({
+  queryKey: computed(() => ['quick-replies', selected.value?.app_id] as const),
+  queryFn: () => fetchQuickReplies(selected.value?.app_id),
+  enabled: computed(() => selected.value !== null),
+})
+
+// El menú aparece mientras se escribe "/algo" y filtra por atajo o
+// título. Sin esto habría que abrir otra pantalla a copiar el texto, que
+// es justo lo que la respuesta guardada venía a evitar.
+const quickMatches = computed(() => {
+  const match = /^\/(\S*)$/.exec(reply.value)
+  if (match === null) return []
+  const needle = match[1].toLowerCase()
+  return (quickReplies.value ?? []).filter(
+    (q) => q.shortcut.includes(needle) || q.title.toLowerCase().includes(needle),
+  )
+})
+
+function useQuickReply(text: string): void {
+  reply.value = text
 }
 
 // -- Adjuntar una imagen -------------------------------------------------
@@ -464,7 +490,24 @@ function shortTime(iso: string): string {
             </div>
           </div>
 
-          <div class="shrink-0 border-t border-slate-100 p-3">
+          <div class="relative shrink-0 border-t border-slate-100 p-3">
+            <!-- Respuestas guardadas: aparecen al escribir "/". -->
+            <div
+              v-if="quickMatches.length"
+              class="absolute bottom-full left-3 right-3 mb-1 max-h-56 overflow-y-auto rounded-lg border border-slate-200 bg-white shadow-lg"
+            >
+              <button
+                v-for="quick in quickMatches"
+                :key="quick.id"
+                type="button"
+                class="flex w-full flex-col gap-0.5 border-b border-slate-50 px-3 py-2 text-left hover:bg-teal-50"
+                @click="useQuickReply(quick.text)"
+              >
+                <span class="text-xs font-semibold text-slate-700">/{{ quick.shortcut }}</span>
+                <span class="truncate text-[11px] text-slate-500">{{ quick.text }}</span>
+              </button>
+            </div>
+
             <!--
               Ventana cerrada: el texto libre NO se entrega (Meta lo acepta y
               lo descarta). Decirlo aquí, con el botón de plantilla al lado,
@@ -512,6 +555,13 @@ function shortTime(iso: string): string {
           Elige una conversación para leer y responder.
         </div>
       </div>
+
+      <!--
+        Quién es esta persona, al lado del hilo. Solo lo que Connect sabe:
+        la ficha de negocio (citas, pedidos) la pinta la app dueña cuando
+        embeba esta bandeja.
+      -->
+      <ContactSidebar v-if="selectedId" :key="selectedId" :contact-id="selectedId" />
     </div>
 
     <Dialog

@@ -3,8 +3,10 @@ import type {
   ChatMediaSend,
   ChatMessage,
   ChatTemplateSend,
+  ContactCard,
   Conversation,
   ConversationList,
+  QuickReply,
 } from '@/types/chat'
 
 // Refleja api/v1/admin_chats.py en nexolu-comms-api (autorizado por scope).
@@ -72,4 +74,39 @@ export async function sendChatTemplate(
     template,
   })
   return data
+}
+
+export async function fetchContactCard(contactId: string): Promise<ContactCard> {
+  const { data } = await httpClient.get<ContactCard>(`/v1/admin/chats/${contactId}`)
+  return data
+}
+
+export async function updateContactCard(
+  contactId: string,
+  patch: { name?: string; tags?: string[]; notes?: string },
+): Promise<ContactCard> {
+  const { data } = await httpClient.patch<ContactCard>(`/v1/admin/chats/${contactId}`, patch)
+  return data
+}
+
+export async function fetchQuickReplies(appId?: string): Promise<QuickReply[]> {
+  const { data } = await httpClient.get<QuickReply[]>('/v1/admin/quick-replies', {
+    params: appId ? { app_id: appId } : undefined,
+  })
+  return data
+}
+
+export async function saveQuickReply(payload: {
+  app_id: string
+  business_id?: string
+  shortcut: string
+  title?: string
+  text: string
+}): Promise<QuickReply> {
+  const { data } = await httpClient.put<QuickReply>('/v1/admin/quick-replies', payload)
+  return data
+}
+
+export async function deleteQuickReply(id: string): Promise<void> {
+  await httpClient.delete(`/v1/admin/quick-replies/${id}`)
 }

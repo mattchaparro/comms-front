@@ -57,3 +57,31 @@ export interface ChatMessage {
   origin: string
   created_at: string
 }
+
+export interface ContactCard {
+  contact_id: string
+  app_id: string
+  business_id: string
+  phone: string
+  name: string
+  tags: string[]
+  fields: Record<string, unknown>
+  notes: string
+  window_open: boolean
+  assigned_to: string | null
+  assigned_name: string | null
+  first_seen_at: string | null
+  last_inbound_at: string | null
+  messages_in: number
+  messages_out: number
+}
+
+export interface QuickReply {
+  id: string
+  app_id: string
+  business_id: string
+  /** Sin la barra: se teclea "/precios" y acá vive "precios". */
+  shortcut: string
+  title: string
+  text: string
+}
