@@ -12,6 +12,8 @@ export interface Conversation {
   last_at: string
   window_open: boolean
   unread: boolean
+  /** La última respuesta no llegó: Meta la rechazó (ver admin_chats.py). */
+  last_failed?: boolean
   assigned_to: string | null
   assigned_name: string | null
 }
@@ -52,6 +54,8 @@ export interface ChatMessage {
     media_url?: string | null
     template?: string
     language?: string | null
+    /** Por qué Meta no lo entregó (solo en salientes fallidos, ver core/chats.py). */
+    error?: string
   }
   status: string
   origin: string

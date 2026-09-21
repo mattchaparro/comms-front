@@ -278,6 +278,30 @@ const MEDIA_ICONS: Record<string, string> = {
   sticker: 'pi pi-face-smile',
 }
 
+/**
+ * Por qué no le llegó, en palabras de quien atiende.
+ *
+ * Meta devuelve códigos ("#131030 Recipient phone number not in allowed
+ * list") que no le dicen nada a una recepcionista. Los que de verdad
+ * pasan se traducen a lo que hay que HACER; el resto se muestra tal cual,
+ * que es mejor que adivinar.
+ */
+function motivoDelFallo(error: unknown): string {
+  const texto = typeof error === 'string' ? error : ''
+
+  if (texto.includes('131030')) {
+    return 'Estamos en el número de prueba de Meta y este teléfono no está en su lista permitida.'
+  }
+  if (texto.includes('131047') || texto.includes('131026')) {
+    return 'Pasaron más de 24 horas desde que escribió: solo se le puede mandar una plantilla.'
+  }
+  if (texto.includes('131021')) {
+    return 'Es el mismo número del negocio.'
+  }
+
+  return texto ? `Meta respondió: ${texto}` : 'WhatsApp no lo entregó.'
+}
+
 function shortTime(iso: string): string {
   const date = new Date(`${iso}Z`)
   const today = new Date()
@@ -393,7 +417,13 @@ function shortTime(iso: string): string {
               </span>
               <span class="shrink-0 text-[10px] text-slate-400">{{ shortTime(convo.last_at) }}</span>
             </span>
-            <span class="truncate text-xs text-slate-500">
+            <!-- Una respuesta que no llegó se ve como lo que es: alguien
+                 esperando. Si se pintara igual que una respuesta, la
+                 conversación parecería atendida. -->
+            <span v-if="convo.last_failed" class="truncate text-xs font-medium text-red-600">
+              <i class="pi pi-exclamation-circle mr-1 text-[10px]" />No le llegó la respuesta
+            </span>
+            <span v-else class="truncate text-xs text-slate-500">
               <i v-if="convo.last_direction === 'out'" class="pi pi-reply mr-1 text-[9px]" />
               {{ convo.last_body || '(multimedia)' }}
             </span>
@@ -495,10 +525,19 @@ function shortTime(iso: string): string {
                     {{ shortTime(message.created_at) }}
                     <i
                       v-if="message.direction === 'out'"
-                      :class="message.status === 'sent' ? 'pi pi-check text-teal-600' : 'pi pi-exclamation-circle text-red-400'"
+                      :class="message.status === 'failed' ? 'pi pi-exclamation-circle text-red-500' : 'pi pi-check text-teal-600'"
                       class="text-[9px]"
-                      :title="message.status === 'sent' ? 'Enviado' : 'Falló (¿ventana cerrada?)'"
+                      :title="message.status === 'failed' ? 'No se entregó' : 'Enviado'"
                     />
+                  </p>
+                  <!-- El motivo, en palabras de quien atiende. Un ícono
+                       rojo de 9 px no lo ve nadie, y la clienta se queda
+                       esperando una respuesta que el panel da por enviada. -->
+                  <p
+                    v-if="message.direction === 'out' && message.status === 'failed'"
+                    class="mt-1 rounded bg-red-50 px-2 py-1 text-left text-[11px] text-red-700"
+                  >
+                    No le llegó. {{ motivoDelFallo(message.payload?.error) }}
                   </p>
                 </div>
               </div>
