@@ -1,9 +1,15 @@
 <script setup lang="ts">
-// Sidebar de escritorio + barra inferior movil, con la identidad propia
-// de Connect (blanco, texto oscuro, item activo en azul suave - el
-// lenguaje de las herramientas de automatizacion, no el indigo del POS).
-// PrimeIcons para todo el chrome de la app.
-import { ref } from 'vue'
+// Sidebar de escritorio + menu lateral deslizable en movil, con la
+// identidad propia de Connect (blanco, texto oscuro, item activo en azul
+// suave - el lenguaje de las herramientas de automatizacion, no el indigo
+// del POS). PrimeIcons para todo el chrome de la app.
+//
+// En movil ya NO hay barra inferior fija: tapaba la caja de escribir del
+// chat -- la pantalla que mas se usa desde el celular -- y con diez
+// secciones se volvia una tira que habia que deslizar para encontrar
+// algo. El menu se abre con el boton de la barra superior (NxNavbar).
+import Drawer from 'primevue/drawer'
+import { ref, watch } from 'vue'
 import { useRoute } from 'vue-router'
 
 import type { NavItem } from '@/types/navigation'
@@ -14,8 +20,20 @@ defineProps<{
   items: NavItem[]
 }>()
 
+/** El menu movil, abierto/cerrado desde la barra superior. */
+const mobileOpen = defineModel<boolean>('mobileOpen', { default: false })
+
 const collapsed = ref(false)
 const route = useRoute()
+
+// Al elegir una seccion el menu se cierra solo: quedarse abierto tapando
+// la pantalla que se acaba de pedir obliga a un toque de mas.
+watch(
+  () => route.fullPath,
+  () => {
+    mobileOpen.value = false
+  },
+)
 
 function isActive(item: NavItem): boolean {
   return Boolean(item.routeName) && route.name === item.routeName
@@ -29,7 +47,7 @@ function linkTarget(item: NavItem) {
 <template>
   <aside
     :class="collapsed ? 'w-16' : 'w-64'"
-    class="hidden flex-col border-r border-slate-200 bg-white transition-all duration-200 lg:flex"
+    class="hidden shrink-0 flex-col border-r border-slate-200 bg-white transition-all duration-200 lg:flex"
   >
     <div class="flex items-center px-4 py-5" :class="collapsed ? 'justify-center px-2' : ''">
       <ConnectWordmark :compact="collapsed" />
@@ -73,43 +91,32 @@ function linkTarget(item: NavItem) {
     </nav>
   </aside>
 
-  <nav
-    class="fixed bottom-0 z-20 w-full overflow-x-auto border-t border-slate-200 bg-white shadow-lg lg:hidden"
-  >
-    <ul class="m-auto flex w-max min-w-full flex-row items-center justify-evenly px-1 py-1.5">
-      <li v-for="item in items" :key="item.label" class="shrink-0">
-        <RouterLink
-          v-if="!item.disabled && item.routeName"
-          :to="linkTarget(item)"
-          class="flex min-h-[60px] min-w-[68px] flex-col items-center justify-center rounded-xl px-2.5 py-2"
-        >
-          <i
-            :class="[
-              item.icon,
-              'text-2xl leading-none',
-              isActive(item) ? 'text-teal-600' : 'text-slate-500',
-            ]"
-          />
-          <span
-            class="mt-1 max-w-[5rem] truncate text-center text-xs font-medium leading-tight"
-            :class="isActive(item) ? 'text-teal-700 font-bold' : 'text-slate-500'"
+  <Drawer v-model:visible="mobileOpen" position="left" class="!w-72 lg:!hidden" :show-close-icon="true">
+    <template #header>
+      <ConnectWordmark />
+    </template>
+    <nav>
+      <ul class="space-y-1">
+        <li v-for="item in items" :key="item.label">
+          <RouterLink
+            v-if="!item.disabled && item.routeName"
+            :to="linkTarget(item)"
+            class="flex items-center gap-3 rounded-lg px-3 py-3 text-base font-medium transition-colors"
+            :class="isActive(item) ? 'bg-teal-50 text-teal-700' : 'text-slate-700 active:bg-slate-100'"
           >
+            <i :class="item.icon" class="w-6 text-center text-lg" />
             {{ item.label }}
-          </span>
-        </RouterLink>
-        <span
-          v-else
-          class="flex min-h-[60px] min-w-[68px] flex-col items-center justify-center rounded-xl px-2.5 py-2"
-          :title="item.disabled ? 'Próximamente' : undefined"
-        >
-          <i :class="item.icon" class="text-2xl leading-none text-slate-300" />
+          </RouterLink>
           <span
-            class="mt-1 max-w-[5rem] truncate text-center text-xs font-medium leading-tight text-slate-300"
+            v-else
+            class="flex items-center gap-3 rounded-lg px-3 py-3 text-base font-medium text-slate-300"
           >
+            <i :class="item.icon" class="w-6 text-center text-lg" />
             {{ item.label }}
+            <span class="ml-auto text-[10px] uppercase">Pronto</span>
           </span>
-        </span>
-      </li>
-    </ul>
-  </nav>
+        </li>
+      </ul>
+    </nav>
+  </Drawer>
 </template>

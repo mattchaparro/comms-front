@@ -1020,7 +1020,7 @@ const menuTypes = (
 </script>
 
 <template>
-  <div class="flex h-screen flex-col bg-white">
+  <div class="flex h-dvh flex-col bg-white">
     <input
       ref="fileInput"
       type="file"
@@ -1029,7 +1029,7 @@ const menuTypes = (
       @change="onFilePicked"
     />
     <!-- Barra superior compacta -->
-    <header class="flex h-14 shrink-0 items-center gap-3 border-b border-slate-200 bg-white px-3">
+    <header class="flex h-14 shrink-0 items-center gap-1.5 border-b border-slate-200 bg-white px-1.5 sm:gap-3 sm:px-3">
       <Button
         icon="pi pi-arrow-left"
         text
@@ -1037,15 +1037,15 @@ const menuTypes = (
         title="Volver a flujos"
         @click="router.push({ name: 'flows' })"
       />
-      <ConnectWordmark compact />
-      <span class="h-6 w-px bg-slate-200" />
+      <ConnectWordmark compact class="hidden sm:flex" />
+      <span class="hidden h-6 w-px bg-slate-200 sm:block" />
       <div class="flex min-w-0 items-center gap-2">
-        <span class="text-sm text-slate-400">Flujos /</span>
+        <span class="hidden text-sm text-slate-400 sm:inline">Flujos /</span>
         <InputText
           v-if="!flowId"
           v-model="metaName"
           placeholder="nombre_del_flujo"
-          class="!h-8 w-52 !text-sm font-semibold"
+          class="!h-8 w-32 !text-sm font-semibold sm:w-52"
         />
         <span v-else class="truncate text-sm font-bold text-slate-900">{{ metaName }}</span>
         <span
@@ -1056,10 +1056,10 @@ const menuTypes = (
         </span>
       </div>
 
-      <div class="ml-auto flex items-center gap-2">
+      <div class="ml-auto flex shrink-0 items-center gap-1 sm:gap-2">
         <span
           v-if="saveError"
-          class="max-w-md truncate rounded-lg bg-red-50 px-3 py-1.5 text-xs font-medium text-red-700"
+          class="max-w-[8rem] truncate sm:max-w-md rounded-lg bg-red-50 px-3 py-1.5 text-xs font-medium text-red-700"
           :title="saveError"
         >
           {{ saveError }}
@@ -1070,7 +1070,7 @@ const menuTypes = (
           :class="dirty ? 'text-amber-600' : 'text-slate-400'"
         >
           <i :class="dirty ? 'pi pi-circle-fill text-[8px]' : 'pi pi-check'" />
-          {{ dirty ? 'Cambios sin guardar' : 'Guardado' }}
+          <span class="hidden sm:inline">{{ dirty ? 'Cambios sin guardar' : 'Guardado' }}</span>
         </span>
         <Button
           icon="pi pi-bolt"
@@ -1085,12 +1085,14 @@ const menuTypes = (
           size="small"
           severity="secondary"
           :outlined="!simDefinition"
+          class="[&_.p-button-label]:hidden sm:[&_.p-button-label]:inline"
           @click="toggleSimulator"
         />
         <Button
           label="Guardar"
           icon="pi pi-check"
           size="small"
+          class="[&_.p-button-label]:hidden sm:[&_.p-button-label]:inline"
           :loading="saveMutation.isPending.value"
           @click="save"
         />
@@ -1219,7 +1221,7 @@ const menuTypes = (
       <!-- Panel flotante de edición (izquierda, patrón ManyChat) -->
       <aside
         v-if="panelMode"
-        class="absolute bottom-0 left-0 top-0 z-20 flex w-[340px] flex-col border-r border-slate-200 bg-white shadow-xl"
+        class="absolute bottom-0 left-0 top-0 z-20 flex w-full flex-col border-r sm:w-[340px] border-slate-200 bg-white shadow-xl"
       >
         <!-- nodo seleccionado -->
         <template v-if="panelMode === 'node' && selectedNode">

@@ -69,9 +69,9 @@ const statusSeverity: Record<string, 'success' | 'danger' | 'info'> = {
 
 <template>
   <div>
-    <div class="mb-6 flex items-center justify-between">
+    <div class="mb-4 flex flex-wrap items-start justify-between gap-3 sm:mb-6 sm:items-center">
       <div>
-        <h1 class="text-2xl font-bold text-slate-900">Negocios / Canales</h1>
+        <h1 class="text-xl font-bold text-slate-900 sm:text-2xl">Negocios / Canales</h1>
         <p class="mt-1 text-sm text-slate-500">
           Números propios conectados por Embedded Signup. Un negocio sin canal propio envía por el
           número compartido de su app.

@@ -198,15 +198,15 @@ const statusSeverity: Record<string, 'success' | 'danger' | 'warn' | 'info' | 's
 
 <template>
   <div>
-    <div class="mb-6 flex items-center justify-between gap-3">
+    <div class="mb-4 flex flex-wrap items-start justify-between gap-3 sm:mb-6 sm:items-center">
       <div>
-        <h1 class="text-2xl font-bold text-slate-900">Plantillas</h1>
+        <h1 class="text-xl font-bold text-slate-900 sm:text-2xl">Plantillas</h1>
         <p class="mt-1 text-sm text-slate-500">
           Mensajes pre-aprobados por Meta para escribir fuera de la ventana de 24 horas. El estado
           lo decide Meta y se refleja aquí solo.
         </p>
       </div>
-      <div class="flex gap-2">
+      <div class="flex flex-wrap gap-2">
         <Button
           icon="pi pi-sync"
           label="Sincronizar"

@@ -27,3 +27,38 @@ body {
 body {
   margin: 0;
 }
+
+/*
+ * Responsive de base, para todo el panel (lo pidió Alejandro: Connect se
+ * usa desde el celular, sobre todo la bandeja).
+ *
+ * - Las tablas se deslizan de lado dentro de su caja en vez de empujar
+ *   la página entera más allá de la pantalla.
+ * - Los diálogos nunca son más anchos que la pantalla, y en celular casi
+ *   la ocupan entera.
+ * - En celular los campos van a 16 px: con menos, iOS hace zoom al tocar
+ *   el campo y la pantalla queda corrida hasta que uno la pellizca de
+ *   vuelta. Va con !important porque varias vistas los achican con
+ *   `!text-xs`, pensado para escritorio.
+ */
+.p-datatable-table-container {
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+}
+
+.p-dialog {
+  max-width: calc(100vw - 1rem);
+}
+
+@media (max-width: 640px) {
+  .p-dialog {
+    width: calc(100vw - 1rem) !important;
+    max-height: calc(100dvh - 1rem);
+  }
+
+  input.p-inputtext,
+  textarea.p-textarea,
+  .p-select-label {
+    font-size: 16px !important;
+  }
+}

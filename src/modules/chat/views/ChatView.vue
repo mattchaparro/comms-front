@@ -7,6 +7,7 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/vue-query'
 import Button from 'primevue/button'
 import Dialog from 'primevue/dialog'
+import Drawer from 'primevue/drawer'
 import InputText from 'primevue/inputtext'
 import Select from 'primevue/select'
 import Tag from 'primevue/tag'
@@ -34,6 +35,12 @@ import {
   sendChatMessage,
   sendChatTemplate,
 } from '../services/chatService'
+
+/**
+ * Embebida en el panel de otra app (EmbeddedChatView): sin barra superior
+ * ni padding alrededor, así que ocupa el iframe entero.
+ */
+const props = withDefaults(defineProps<{ embedded?: boolean }>(), { embedded: false })
 
 const toast = useToast()
 const queryClient = useQueryClient()
@@ -64,6 +71,19 @@ const selectedId = ref<string | null>(null)
 const selected = computed<Conversation | null>(
   () => conversations.value.find((c) => c.contact_id === selectedId.value) ?? null,
 )
+
+/*
+ * En el celular la bandeja funciona como WhatsApp: se ve la lista O la
+ * conversación, nunca las tres columnas apretadas en 375 px. Volver es
+ * cerrar el hilo. La ficha del contacto, que en escritorio va al lado,
+ * en pantallas angostas se abre como panel desde el botón (i).
+ */
+const contactDrawer = ref(false)
+
+function closeConversation(): void {
+  selectedId.value = null
+  contactDrawer.value = false
+}
 
 // Abrir un hilo lo marca leído: es lo que hace que el contador signifique
 // "hay gente esperando" y no "hay conversaciones".
@@ -312,10 +332,28 @@ function shortTime(iso: string): string {
 </script>
 
 <template>
-  <div class="flex h-[calc(100vh-7.5rem)] min-h-[480px] flex-col">
-    <div class="mb-4 flex items-center justify-between gap-3">
-      <div>
-        <h1 class="flex items-center gap-2 text-2xl font-bold text-slate-900">
+  <!--
+    Alto = la pantalla menos la barra superior y el padding del main
+    (h-14 + p-3 en celular, h-16 + p-6 desde sm). dvh y no vh: en el
+    celular la barra del navegador aparece y desaparece, y con vh la caja
+    de escribir quedaba escondida detrás de ella.
+  -->
+  <div
+    class="flex min-h-[420px] flex-col"
+    :class="
+      props.embedded
+        ? 'h-dvh sm:p-3'
+        : '-m-3 h-[calc(100dvh-3.5rem)] sm:m-0 sm:h-[calc(100dvh-7rem)]'
+    "
+  >
+    <!-- Con una conversación abierta en el celular, la cabecera de la
+         página sobra: cada renglón es espacio que le quita al hilo. -->
+    <div
+      class="mb-3 items-center justify-between gap-3 px-3 pt-3 sm:mb-4 sm:px-0 sm:pt-0"
+      :class="selectedId ? 'hidden md:flex' : 'flex'"
+    >
+      <div class="min-w-0">
+        <h1 class="flex items-center gap-2 text-xl font-bold text-slate-900 sm:text-2xl">
           Chat
           <span
             v-if="unreadTotal"
@@ -325,19 +363,20 @@ function shortTime(iso: string): string {
             {{ unreadTotal }}
           </span>
         </h1>
-        <p class="mt-1 text-sm text-slate-500">
+        <p class="mt-1 hidden text-sm text-slate-500 md:block">
           La conversación de WhatsApp del negocio, en vivo: lo que escribe la clienta, lo que
           responde el bot, y tus respuestas — sin necesitar el celular.
         </p>
       </div>
-      <div class="flex items-center gap-2">
+      <div class="flex shrink-0 items-center gap-2">
         <Button
           icon="pi pi-bell"
           label="Avisos"
           severity="secondary"
           outlined
-          class="!text-xs"
+          class="!text-xs [&_.p-button-label]:hidden sm:[&_.p-button-label]:inline"
           title="A quién avisar cuando hay conversaciones sin responder"
+          aria-label="Avisos"
           @click="alertsDialog = true"
         />
         <!-- Un filtro con una sola opción no filtra nada: ocupa sitio y
@@ -349,16 +388,23 @@ function shortTime(iso: string): string {
           :options="appOptions"
           placeholder="Todas las apps"
           show-clear
-          class="w-48"
+          class="w-36 sm:w-48"
         />
       </div>
     </div>
 
     <InboxAlertsDialog v-model:visible="alertsDialog" :apps="appOptions" :default-app="appFilter" />
 
-    <div class="flex min-h-0 flex-1 overflow-hidden rounded-xl border border-slate-200 bg-white">
-      <!-- conversaciones -->
-      <aside class="flex w-72 shrink-0 flex-col border-r border-slate-200">
+    <div
+      class="flex min-h-0 flex-1 overflow-hidden border-slate-200 bg-white sm:rounded-xl sm:border"
+      :class="selectedId ? 'border-t-0' : 'border-t'"
+    >
+      <!-- conversaciones: en el celular ocupan todo el ancho y se
+           esconden al abrir una -->
+      <aside
+        class="w-full shrink-0 flex-col border-slate-200 md:flex md:w-72 md:border-r"
+        :class="selectedId ? 'hidden' : 'flex'"
+      >
         <div class="shrink-0 border-b border-slate-100 p-2">
           <InputText
             v-model="search"
@@ -368,7 +414,7 @@ function shortTime(iso: string): string {
           />
           <button
             type="button"
-            class="mt-1.5 w-full rounded px-2 py-1 text-left text-[11px] transition-colors"
+            class="mt-1.5 w-full rounded px-2 py-2 text-left text-xs transition-colors sm:py-1 sm:text-[11px]"
             :class="onlyUnread ? 'bg-teal-50 text-teal-700' : 'text-slate-500 hover:bg-slate-50'"
             @click="onlyUnread = !onlyUnread"
           >
@@ -390,7 +436,7 @@ function shortTime(iso: string): string {
             v-for="convo in conversations"
             :key="convo.contact_id"
             type="button"
-            class="flex w-full flex-col gap-0.5 border-b border-slate-50 px-3 py-2.5 text-left transition-colors"
+            class="flex w-full flex-col gap-0.5 border-b border-slate-50 px-3 py-3 text-left transition-colors md:py-2.5"
             :class="convo.contact_id === selectedId ? 'bg-teal-50' : 'hover:bg-slate-50'"
             @click="openConversation(convo.contact_id)"
           >
@@ -442,24 +488,42 @@ function shortTime(iso: string): string {
         </div>
       </aside>
 
-      <!-- hilo -->
-      <div class="flex min-w-0 flex-1 flex-col">
+      <!-- hilo: en el celular solo existe con una conversación abierta -->
+      <div
+        class="min-w-0 flex-1 flex-col md:flex"
+        :class="selectedId ? 'flex' : 'hidden'"
+      >
         <template v-if="selected">
-          <div class="flex shrink-0 items-center gap-3 border-b border-slate-100 px-4 py-2.5">
-            <span class="flex h-9 w-9 items-center justify-center rounded-full bg-teal-100 text-sm font-bold text-teal-700">
+          <div class="flex shrink-0 items-center gap-2 border-b border-slate-100 px-1 py-1.5 sm:gap-3 sm:px-4 sm:py-2.5">
+            <button
+              type="button"
+              class="flex h-10 w-10 shrink-0 items-center justify-center rounded-full text-slate-600 active:bg-slate-100 md:hidden"
+              aria-label="Volver a las conversaciones"
+              @click="closeConversation"
+            >
+              <i class="pi pi-arrow-left" />
+            </button>
+            <span class="relative flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-teal-100 text-sm font-bold text-teal-700">
               {{ (selected.name || selected.phone).slice(0, 1).toUpperCase() }}
+              <!-- La ventana de 24h, en el celular como un punto sobre el
+                   avatar: el aviso grande del compositor ya dice qué hacer. -->
+              <span
+                class="absolute -bottom-0.5 -right-0.5 h-3 w-3 rounded-full border-2 border-white sm:hidden"
+                :class="selected.window_open ? 'bg-green-500' : 'bg-slate-300'"
+              />
             </span>
-            <div class="min-w-0">
+            <div class="min-w-0 flex-1">
               <p class="truncate text-sm font-semibold text-slate-800">{{ selected.name || selected.phone }}</p>
               <!-- La app solo se nombra si hay más de una a la vista. En la
                    bandeja embebida en el panel de un negocio, "· spa" no le
                    dice nada a nadie: ahí todo es spa. -->
-              <p class="text-[11px] text-slate-400">
+              <p class="truncate text-[11px] text-slate-400">
                 {{ selected.phone }}<template v-if="appOptions.length > 1"> · {{ selected.app_id }}</template>
               </p>
             </div>
             <!-- Quién atiende: no bloquea a nadie, avisa. Un cliente
-                 externo lo ve pero no reasigna (no lista usuarios). -->
+                 externo lo ve pero no reasigna (no lista usuarios). En el
+                 celular vive dentro de la ficha (i). -->
             <Select
               v-if="auth.isPlatform"
               :model-value="selected.assigned_to"
@@ -467,21 +531,29 @@ function shortTime(iso: string): string {
               option-label="label"
               option-value="value"
               placeholder="Sin asignar"
-              class="ml-auto !text-xs"
+              class="!hidden !text-xs md:!inline-flex"
               :loading="assignMutation.isPending.value"
               @update:model-value="assignMutation.mutate($event)"
             />
-            <span v-else-if="selected.assigned_name" class="ml-auto text-xs text-teal-700">
+            <span v-else-if="selected.assigned_name" class="hidden text-xs text-teal-700 md:inline">
               <i class="pi pi-user mr-1 text-[10px]" />{{ selected.assigned_name }}
             </span>
             <Tag
-              :class="auth.isPlatform ? '' : 'ml-auto'"
+              class="!hidden sm:!inline-flex"
               :severity="selected.window_open ? 'success' : 'secondary'"
               :value="selected.window_open ? 'Ventana 24h abierta' : 'Ventana cerrada'"
             />
+            <button
+              type="button"
+              class="flex h-10 w-10 shrink-0 items-center justify-center rounded-full text-slate-500 active:bg-slate-100 xl:hidden"
+              aria-label="Ver la ficha del contacto"
+              @click="contactDrawer = true"
+            >
+              <i class="pi pi-info-circle text-lg" />
+            </button>
           </div>
 
-          <div ref="transcript" class="min-h-0 flex-1 overflow-y-auto bg-[#e5ddd5] p-4">
+          <div ref="transcript" class="min-h-0 flex-1 overflow-y-auto bg-[#e5ddd5] p-2 sm:p-4">
             <div class="mx-auto flex max-w-2xl flex-col gap-1.5">
               <div
                 v-for="message in thread ?? []"
@@ -490,7 +562,7 @@ function shortTime(iso: string): string {
                 :class="message.direction === 'out' ? 'items-end' : 'items-start'"
               >
                 <div
-                  class="max-w-[75%] rounded-xl px-3 py-1.5 text-[13px] leading-relaxed shadow-sm"
+                  class="max-w-[88%] rounded-xl px-3 py-1.5 text-sm leading-relaxed shadow-sm sm:max-w-[75%] sm:text-[13px]"
                   :class="
                     message.direction === 'out'
                       ? 'rounded-tr-sm bg-[#d9fdd3] text-slate-800'
@@ -544,7 +616,7 @@ function shortTime(iso: string): string {
             </div>
           </div>
 
-          <div class="relative shrink-0 border-t border-slate-100 p-3">
+          <div class="relative shrink-0 border-t border-slate-100 p-2 pb-[max(0.5rem,env(safe-area-inset-bottom))] sm:p-3">
             <!-- Respuestas guardadas: aparecen al escribir "/". -->
             <div
               v-if="quickMatches.length"
@@ -575,32 +647,45 @@ function shortTime(iso: string): string {
               Pasaron más de 24 horas desde su último mensaje: WhatsApp solo entrega una
               <strong>plantilla</strong> aprobada.
             </p>
-            <div class="flex items-center gap-2">
+            <div class="flex items-center gap-1.5 sm:gap-2">
               <input ref="fileInput" type="file" class="hidden" accept="image/*,.pdf" @change="attach" />
               <Button
                 icon="pi pi-paperclip"
                 severity="secondary"
-                outlined
+                text
+                rounded
+                class="shrink-0 sm:!border sm:!border-slate-300"
                 :loading="uploading"
                 title="Adjuntar imagen o PDF (el texto escrito va como pie)"
+                aria-label="Adjuntar"
                 @click="fileInput?.click()"
               />
+              <!-- En el celular solo el ícono: la palabra se come el ancho
+                   que necesita la caja de escribir. -->
               <Button
                 icon="pi pi-file"
                 :severity="selected.window_open ? 'secondary' : 'warn'"
                 :outlined="selected.window_open"
                 label="Plantilla"
-                class="!text-xs"
+                aria-label="Enviar una plantilla"
+                class="shrink-0 !text-xs [&_.p-button-label]:hidden sm:[&_.p-button-label]:inline"
                 @click="openTemplates"
               />
               <InputText
                 v-model="reply"
                 :placeholder="selected.window_open ? 'Escribe tu respuesta…' : 'Ventana cerrada: usa una plantilla'"
-                fluid
-                class="!text-sm"
+                class="min-w-0 flex-1 !rounded-full !text-sm"
+                enterkeyhint="send"
                 @keyup.enter="send"
               />
-              <Button icon="pi pi-send" :loading="sendMutation.isPending.value" @click="send" />
+              <Button
+                icon="pi pi-send"
+                rounded
+                class="shrink-0"
+                aria-label="Enviar"
+                :loading="sendMutation.isPending.value"
+                @click="send"
+              />
             </div>
           </div>
         </template>
@@ -615,8 +700,42 @@ function shortTime(iso: string): string {
         la ficha de negocio (citas, pedidos) la pinta la app dueña cuando
         embeba esta bandeja.
       -->
-      <ContactSidebar v-if="selectedId" :key="selectedId" :contact-id="selectedId" />
+      <ContactSidebar
+        v-if="selectedId"
+        :key="selectedId"
+        :contact-id="selectedId"
+        class="!hidden xl:!flex"
+      />
     </div>
+
+    <!-- La ficha en pantallas angostas: un panel que se abre desde (i),
+         con el "quién atiende" que en el celular no cabe en la cabecera. -->
+    <Drawer
+      v-model:visible="contactDrawer"
+      position="right"
+      header="Contacto"
+      class="!w-[min(22rem,100vw)] xl:!hidden"
+    >
+      <div v-if="selected && auth.isPlatform" class="mb-4">
+        <p class="mb-1 text-xs font-semibold uppercase tracking-wide text-slate-400">Quién atiende</p>
+        <Select
+          :model-value="selected.assigned_to"
+          :options="assignOptions"
+          option-label="label"
+          option-value="value"
+          placeholder="Sin asignar"
+          fluid
+          :loading="assignMutation.isPending.value"
+          @update:model-value="assignMutation.mutate($event)"
+        />
+      </div>
+      <ContactSidebar
+        v-if="selectedId && contactDrawer"
+        :key="`drawer-${selectedId}`"
+        :contact-id="selectedId"
+        class="!w-full !border-l-0 !bg-transparent !p-0"
+      />
+    </Drawer>
 
     <Dialog
       v-model:visible="templateDialog"

@@ -110,7 +110,7 @@ defineExpose({ interpolate }) // evita el aviso de import sin uso; util en tests
 
 <template>
   <aside
-    class="absolute bottom-0 right-0 top-0 z-20 flex w-[340px] flex-col border-l border-slate-200 bg-white shadow-xl"
+    class="absolute bottom-0 right-0 top-0 z-20 flex w-full flex-col border-l sm:w-[340px] border-slate-200 bg-white shadow-xl"
   >
     <div class="flex items-center gap-2 bg-slate-900 px-4 py-3">
       <i class="pi pi-play-circle text-sm text-teal-400" />

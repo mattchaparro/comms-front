@@ -160,16 +160,16 @@ function confirmDelete(flow: Flow): void {
 
 <template>
   <div>
-    <div class="mb-6 flex items-center justify-between gap-3">
+    <div class="mb-4 flex flex-wrap items-start justify-between gap-3 sm:mb-6 sm:items-center">
       <div>
-        <h1 class="text-2xl font-bold text-slate-900">Flujos</h1>
+        <h1 class="text-xl font-bold text-slate-900 sm:text-2xl">Flujos</h1>
         <p class="mt-1 text-sm text-slate-500">
           Conversaciones automáticas con botones, links y tags. Se disparan por palabra clave o
           cuando tu app lo pide (<code>POST /v1/flows/trigger</code>) — por ejemplo, al agendar una
           cita.
         </p>
       </div>
-      <div class="flex gap-2">
+      <div class="flex flex-wrap gap-2">
         <Button
           label="Modo avanzado (JSON)"
           icon="pi pi-code"

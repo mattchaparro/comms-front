@@ -132,9 +132,9 @@ const toggleMutation = useMutation({
 
 <template>
   <div>
-    <div class="mb-6 flex items-center justify-between">
+    <div class="mb-4 flex flex-wrap items-start justify-between gap-3 sm:mb-6 sm:items-center">
       <div>
-        <h1 class="text-2xl font-bold text-slate-900">Usuarios</h1>
+        <h1 class="text-xl font-bold text-slate-900 sm:text-2xl">Usuarios</h1>
         <p class="mt-1 text-sm text-slate-500">
           Quién entra a Connect: administradores de Nexolú (plataforma completa) y clientes
           externos atados a su negocio.

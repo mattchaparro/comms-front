@@ -11,7 +11,7 @@ const tabs = [
 <template>
   <div>
     <div class="mb-6">
-      <h1 class="text-2xl font-bold text-slate-900">Comunicaciones</h1>
+      <h1 class="text-xl font-bold text-slate-900 sm:text-2xl">Comunicaciones</h1>
     </div>
 
     <nav class="mb-6 flex gap-1 border-b border-slate-200">

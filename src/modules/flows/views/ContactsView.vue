@@ -78,7 +78,7 @@ const saveMutation = useMutation({
 <template>
   <div>
     <div class="mb-6">
-      <h1 class="text-2xl font-bold text-slate-900">Contactos</h1>
+      <h1 class="text-xl font-bold text-slate-900 sm:text-2xl">Contactos</h1>
       <p class="mt-1 text-sm text-slate-500">
         Cada teléfono que interactúa por WhatsApp, con los tags y campos que los flujos y las apps
         le van dejando.

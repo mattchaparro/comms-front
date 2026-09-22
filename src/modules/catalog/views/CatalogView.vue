@@ -139,16 +139,16 @@ const statusSeverity: Record<string, 'success' | 'danger' | 'info'> = {
 
 <template>
   <div>
-    <div class="mb-6 flex items-center justify-between gap-3">
+    <div class="mb-4 flex flex-wrap items-start justify-between gap-3 sm:mb-6 sm:items-center">
       <div>
-        <h1 class="text-2xl font-bold text-slate-900">Catálogo</h1>
+        <h1 class="text-xl font-bold text-slate-900 sm:text-2xl">Catálogo</h1>
         <p class="mt-1 text-sm text-slate-500">
           Estado de cada producto contra el catálogo de Meta. La fuente de verdad es la app dueña
           (los items llegan por <code>POST /v1/catalog/sync</code>); lo que no cambió no se
           re-envía.
         </p>
       </div>
-      <div class="flex gap-2">
+      <div class="flex flex-wrap gap-2">
         <Button
           icon="pi pi-check-circle"
           label="Verificar lotes"

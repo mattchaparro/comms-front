@@ -2,7 +2,7 @@
 // Layout con la identidad propia de Connect (chrome blanco + wordmark
 // propio, ver src/theme/nexoluPreset.ts): ya no comparte el look del
 // POS/admin - decision de Alejandro, sesion 15/09/2026.
-import { computed } from 'vue'
+import { computed, ref } from 'vue'
 import { useRouter } from 'vue-router'
 
 import { clientNavItems, platformNavItems } from '@/router/navigation'
@@ -13,6 +13,7 @@ const auth = useAuthStore()
 const router = useRouter()
 
 const navItems = computed(() => (auth.isPlatform ? platformNavItems : clientNavItems))
+const menuOpen = ref(false)
 
 async function handleLogout(): Promise<void> {
   await auth.logout()
@@ -21,11 +22,18 @@ async function handleLogout(): Promise<void> {
 </script>
 
 <template>
-  <div class="flex min-h-screen bg-[#f7f8fa]">
-    <NxSidebar :items="navItems" />
+  <!-- 100dvh y no 100vh: en el celular la barra del navegador aparece y
+       desaparece, y con vh el chat quedaba con la caja de escribir detras
+       de ella. -->
+  <div class="flex min-h-dvh bg-[#f7f8fa]">
+    <NxSidebar v-model:mobile-open="menuOpen" :items="navItems" />
     <div class="flex min-w-0 flex-1 flex-col">
-      <NxNavbar :user-name="auth.user?.full_name ?? ''" @logout="handleLogout" />
-      <main class="flex-1 p-6 pb-20 lg:pb-6">
+      <NxNavbar
+        :user-name="auth.user?.full_name ?? ''"
+        @logout="handleLogout"
+        @menu="menuOpen = true"
+      />
+      <main class="min-w-0 flex-1 p-3 sm:p-6">
         <router-view />
       </main>
     </div>

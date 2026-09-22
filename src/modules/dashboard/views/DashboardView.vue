@@ -51,7 +51,7 @@ const usd = new Intl.NumberFormat('es-CO', {
 
 <template>
   <div>
-    <h1 class="text-2xl font-bold text-slate-900">Hola, {{ auth.user?.full_name }}</h1>
+    <h1 class="text-xl font-bold text-slate-900 sm:text-2xl">Hola, {{ auth.user?.full_name }}</h1>
     <p class="mt-1 text-sm text-slate-500">
       Actividad de los últimos 30 días
       <template v-if="data"> ({{ data.date_from }} → {{ data.date_to }})</template>
