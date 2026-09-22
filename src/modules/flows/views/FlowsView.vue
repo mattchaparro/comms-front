@@ -16,7 +16,6 @@ import Message from 'primevue/message'
 import Select from 'primevue/select'
 import SelectButton from 'primevue/selectbutton'
 import Tag from 'primevue/tag'
-import Textarea from 'primevue/textarea'
 import ToggleSwitch from 'primevue/toggleswitch'
 import { useConfirm } from 'primevue/useconfirm'
 import { useToast } from 'primevue/usetoast'
@@ -24,6 +23,7 @@ import { computed, ref } from 'vue'
 import { useRouter } from 'vue-router'
 
 import { fetchCommsApps } from '@/modules/commsCore/services/commsCoreService'
+import JsonEditor from '@/ui/JsonEditor.vue'
 import { formatDateTime } from '@/utils/formatDateTime'
 import { EXAMPLE_DEFINITION, type Flow } from '@/types/flows'
 
@@ -300,13 +300,7 @@ function confirmDelete(flow: Flow): void {
             <code v-pre>{{contact.name}}</code>; <code>add_tags</code>/<code>set_fields</code> por
             nodo. El backend valida al guardar.
           </p>
-          <Textarea
-            v-model="formDefinition"
-            rows="14"
-            class="font-mono !text-xs"
-            auto-resize
-            fluid
-          />
+          <JsonEditor v-model="formDefinition" :rows="14" />
         </div>
 
         <div class="flex gap-2 pt-2">

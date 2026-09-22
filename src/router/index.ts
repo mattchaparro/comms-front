@@ -87,6 +87,13 @@ const router = createRouter({
           component: () => import('@/modules/templates/views/TemplatesView.vue'),
         },
         {
+          // WhatsApp Flows de Meta ("Formularios" en el panel): no son los
+          // `flows` de abajo (motor de conversaciones de Connect).
+          path: 'formularios',
+          name: 'whatsapp-flows',
+          component: () => import('@/modules/whatsappFlows/views/WhatsAppFlowsView.vue'),
+        },
+        {
           path: 'chat',
           name: 'chat',
           component: () => import('@/modules/chat/views/ChatView.vue'),
