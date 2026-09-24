@@ -14,6 +14,7 @@ import { computed, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import { z } from 'zod'
 
+import { readCameFromApp } from '@/services/http/cameFromApp'
 import { redirectToSso, ssoError, ssoIsConfigured } from '@/services/http/ssoAssertion'
 import { useAuthStore } from '@/stores/auth.store'
 
@@ -42,6 +43,10 @@ const showLocalForm = ref(!ssoAvailable)
 // `ssoError` lo pone el guard del router cuando un canje falla; NO se
 // reintenta el SSO solo (un 403 fallaria igual: bucle sin formulario).
 const displayError = computed(() => submitError.value ?? ssoError.value)
+
+// Quien entro alguna vez desde otra app (la recepcionista del Spa) no
+// tiene contrasena aca: si su sesion vencio, este formulario no le sirve.
+const cameFromApp = readCameFromApp()
 const localFormVisible = computed(() => showLocalForm.value || Boolean(ssoError.value))
 
 function entrarConNexolu(): void {
@@ -92,6 +97,10 @@ const onSubmit = handleSubmit(async (values) => {
       <h1 class="text-3xl font-bold text-slate-900">Nexolú Connect</h1>
       <p class="mt-2 text-slate-500">Conecta tu negocio con tus clientes · inicia sesión para continuar</p>
     </div>
+
+    <Message v-if="cameFromApp" severity="info" :closable="false" class="mb-5">
+      Tu sesión se cerró. Vuelve a entrar desde tu app (en Nexolú Spa, el menú «WhatsApp»).
+    </Message>
 
     <Message v-if="displayError" severity="error" :closable="false" class="mb-5">
       {{ displayError }}

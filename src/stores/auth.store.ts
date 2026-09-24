@@ -1,6 +1,7 @@
 import { computed, ref } from 'vue'
 import { defineStore } from 'pinia'
 
+import { rememberCameFromApp } from '@/services/http/cameFromApp'
 import { httpClient } from '@/services/http/client'
 import { unsubscribeFromPush } from '@/services/push/pushService'
 import { tokenStorage } from '@/services/http/tokenStorage'
@@ -66,6 +67,7 @@ export const useAuthStore = defineStore('auth', () => {
       { skipAuthRedirect: true },
     )
     setSession(data)
+    rememberCameFromApp()
   }
 
   /** Rehidrata al usuario a partir del token guardado (recarga de pagina). */
