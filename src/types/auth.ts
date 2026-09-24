@@ -5,6 +5,10 @@ export interface User {
   full_name: string
   roles: string[] // ['platform'] (admin de Nexolu) | ['client'] (negocio externo)
   app_ids: string[] // solo para client: sus apps; vacia para platform
+  // Solo si ve UN negocio (quien entra desde el Spa con su pase): el panel
+  // se reduce al chat. null = todos los negocios de sus apps.
+  business_ids?: string[] | null
+  origin_app_id?: string | null
 }
 
 export interface LoginCredentials {

@@ -13,6 +13,7 @@ import { createApp } from 'vue'
 import App from './App.vue'
 import router from './router'
 import { stashSsoAssertionFromUrl } from './services/http/ssoAssertion'
+import { registerServiceWorker } from './services/push/pushService'
 import { queryClient } from './services/query/queryClient'
 import { nexoluPreset } from './theme/nexoluPreset'
 
@@ -37,3 +38,14 @@ app.use(ToastService)
 app.use(ConfirmationService)
 
 app.mount('#app')
+
+// El service worker solo trae los avisos al celular (ver public/sw.js). Si
+// el panel ya estaba abierto cuando tocan un aviso, el worker le pide que
+// navegue a esa conversacion en vez de abrir otra ventana.
+void registerServiceWorker()
+navigator.serviceWorker?.addEventListener('message', (event: MessageEvent) => {
+  const data = event.data as { type?: string; url?: string } | null
+  if (data?.type !== 'connect:open' || !data.url) return
+  const url = new URL(data.url)
+  if (url.origin === window.location.origin) void router.push(url.pathname + url.search)
+})

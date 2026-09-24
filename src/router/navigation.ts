@@ -17,6 +17,11 @@ export const platformNavItems: NavItem[] = [
   { label: 'Catálogo', icon: 'pi pi-shopping-bag', routeName: 'catalog' },
 ]
 
+// Quien vino de otra app a atender UN negocio (la recepcionista del Spa).
+export const chatOnlyNavItems: NavItem[] = [
+  { label: 'Chat', icon: 'pi pi-comments', routeName: 'chat' },
+]
+
 export const clientNavItems: NavItem[] = [
   { label: 'Dashboard', icon: 'pi pi-th-large', routeName: 'dashboard' },
   { label: 'Mi negocio', icon: 'pi pi-box', routeName: 'comms-core.apps' },

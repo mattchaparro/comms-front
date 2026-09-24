@@ -5,14 +5,17 @@
 import { computed, ref } from 'vue'
 import { useRouter } from 'vue-router'
 
-import { clientNavItems, platformNavItems } from '@/router/navigation'
+import { chatOnlyNavItems, clientNavItems, platformNavItems } from '@/router/navigation'
 import { useAuthStore } from '@/stores/auth.store'
+import PushToggle from '@/modules/push/components/PushToggle.vue'
 import { NxNavbar, NxSidebar } from '@/ui'
 
 const auth = useAuthStore()
 const router = useRouter()
 
-const navItems = computed(() => (auth.isPlatform ? platformNavItems : clientNavItems))
+const navItems = computed(() =>
+  auth.isPlatform ? platformNavItems : auth.isChatOnly ? chatOnlyNavItems : clientNavItems,
+)
 const menuOpen = ref(false)
 
 async function handleLogout(): Promise<void> {
@@ -32,7 +35,11 @@ async function handleLogout(): Promise<void> {
         :user-name="auth.user?.full_name ?? ''"
         @logout="handleLogout"
         @menu="menuOpen = true"
-      />
+      >
+        <template #actions>
+          <PushToggle />
+        </template>
+      </NxNavbar>
       <main class="min-w-0 flex-1 p-3 sm:p-6">
         <router-view />
       </main>

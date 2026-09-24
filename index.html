@@ -2,7 +2,19 @@
 <html lang="es">
   <head>
     <meta charset="UTF-8" />
+    <!-- Sin viewport-fit=cover a proposito: iOS deja libres el notch y la
+         barra de inicio, y la caja de escribir del chat no queda debajo. -->
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="theme-color" content="#0d9488" />
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    <link rel="manifest" href="/manifest.webmanifest" />
+    <!-- iPhone: los avisos solo funcionan con Connect en la pantalla de
+         inicio (iOS 16.4+), y esto es lo que la hace una app de verdad. -->
+    <link rel="apple-touch-icon" href="/icons/apple-touch-icon.png" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-title" content="Connect" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="default" />
     <title>Nexolú Connect</title>
   </head>
   <body>

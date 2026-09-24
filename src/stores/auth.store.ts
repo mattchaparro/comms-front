@@ -2,6 +2,7 @@ import { computed, ref } from 'vue'
 import { defineStore } from 'pinia'
 
 import { httpClient } from '@/services/http/client'
+import { unsubscribeFromPush } from '@/services/push/pushService'
 import { tokenStorage } from '@/services/http/tokenStorage'
 import { queryClient } from '@/services/query/queryClient'
 import type { AuthResponse, LoginCredentials, User } from '@/types/auth'
@@ -53,6 +54,20 @@ export const useAuthStore = defineStore('auth', () => {
     setSession(data)
   }
 
+  /**
+   * Canjea el pase de un solo uso con que otra app (el Spa) manda a su
+   * gente al chat. Igual que la asercion del SSO: corre dentro del guard,
+   * sin redireccion automatica ante un 401.
+   */
+  async function exchangeTicket(ticket: string): Promise<void> {
+    const { data } = await httpClient.post<AuthResponse>(
+      '/panel/auth/ticket/exchange',
+      { ticket },
+      { skipAuthRedirect: true },
+    )
+    setSession(data)
+  }
+
   /** Rehidrata al usuario a partir del token guardado (recarga de pagina). */
   async function fetchCurrentUser(): Promise<User> {
     const { data } = await httpClient.get<User>('/panel/me')
@@ -61,6 +76,10 @@ export const useAuthStore = defineStore('auth', () => {
   }
 
   async function logout(): Promise<void> {
+    // Primero el celular: en el del mostrador no deben seguir llegando los
+    // mensajes de quien ya se fue. Necesita la sesion viva para decirselo
+    // al servidor, por eso va antes de cerrarla. Nunca bloquea la salida.
+    await unsubscribeFromPush().catch(() => undefined)
     try {
       await httpClient.post('/panel/auth/logout')
     } finally {
@@ -72,14 +91,21 @@ export const useAuthStore = defineStore('auth', () => {
   // cliente externo (solo sus apps). El backend ya recorta cada respuesta;
   // esto solo decide que UI mostrar.
   const isPlatform = computed(() => user.value?.roles.includes('platform') ?? false)
+  // Quien ve UN negocio (la recepcionista que vino del Spa): vino a
+  // contestar mensajes, asi que el panel es solo el chat.
+  const isChatOnly = computed(
+    () => !isPlatform.value && (user.value?.business_ids?.length ?? 0) > 0,
+  )
 
   return {
     user,
     token,
     isAuthenticated,
     isPlatform,
+    isChatOnly,
     login,
     exchangeAssertion,
+    exchangeTicket,
     logout,
     fetchCurrentUser,
     clearSession,

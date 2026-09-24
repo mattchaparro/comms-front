@@ -2,6 +2,7 @@ import { isAxiosError } from 'axios'
 import { createRouter, createWebHistory } from 'vue-router'
 
 import { ssoAssertion, ssoError } from '@/services/http/ssoAssertion'
+import { ticketError } from '@/services/http/ticketError'
 import { useAuthStore } from '@/stores/auth.store'
 
 declare module 'vue-router' {
@@ -44,6 +45,16 @@ const router = createRouter({
       path: '/embebido/chat',
       name: 'embedded-chat',
       component: () => import('@/modules/chat/views/EmbeddedChatView.vue'),
+    },
+    {
+      /*
+       * La puerta de quien viene de otra app (el menu "WhatsApp" del Spa).
+       * El pase viaja en el fragmento (#ticket=...&next=...) y se canjea
+       * en el guard de abajo, antes de cualquier rebote al login.
+       */
+      path: '/entrar',
+      name: 'ticket-login',
+      component: () => import('@/modules/auth/views/TicketLoginView.vue'),
     },
     {
       path: '/',
@@ -154,6 +165,31 @@ router.beforeEach(async (to) => {
 
   const auth = useAuthStore()
 
+  if (to.name === 'ticket-login') {
+    const params = new URLSearchParams(to.hash.replace(/^#/, ''))
+    const ticket = params.get('ticket')
+    const next = params.get('next') ?? '/chat'
+    if (!ticket) {
+      if (ticketError.value) return true
+      return auth.isAuthenticated ? { name: 'chat' } : { name: 'login' }
+    }
+    try {
+      await auth.exchangeTicket(ticket)
+      // Solo rutas locales: el destino lo manda el servidor, pero no cuesta
+      // nada no confiar.
+      return next.startsWith('/') && !next.startsWith('//') ? next : { name: 'chat' }
+    } catch (error) {
+      // Pase usado o vencido (recargar la pestana lo reusa): si ya hay
+      // sesion, al chat; si no, se muestra el mensaje en la vista.
+      if (auth.isAuthenticated) return { name: 'chat' }
+      ticketError.value =
+        isAxiosError<{ detail?: string }>(error) && error.response?.data?.detail
+          ? error.response.data.detail
+          : 'No pudimos abrir el chat. Vuelve a entrar desde tu app.'
+      return { name: 'ticket-login', hash: '' }
+    }
+  }
+
   // Al volver de nexolu-auth hay una asercion esperando (la recogio
   // main.ts del fragmento). Canjearla aca, antes de cualquier rebote a
   // /iniciar-sesion que la descartaria. Mismo flujo que nexolu-admin-front.
@@ -194,8 +230,14 @@ router.beforeEach(async (to) => {
     return { name: 'dashboard' }
   }
 
+  // Quien ve un solo negocio vino a contestar mensajes: todo lo demas es
+  // de la app entera (y el backend igual le responde 404).
+  if (auth.isChatOnly && to.meta.requiresAuth && to.name !== 'chat') {
+    return { name: 'chat' }
+  }
+
   if (to.name === 'login' && auth.isAuthenticated) {
-    return { name: 'dashboard' }
+    return auth.isChatOnly ? { name: 'chat' } : { name: 'dashboard' }
   }
 
   return true

@@ -13,6 +13,7 @@ import Select from 'primevue/select'
 import Tag from 'primevue/tag'
 import { useToast } from 'primevue/usetoast'
 import { computed, nextTick, ref, watch } from 'vue'
+import { useRoute, useRouter } from 'vue-router'
 
 import { fetchCommsApps } from '@/modules/commsCore/services/commsCoreService'
 import { uploadMedia } from '@/modules/flows/services/flowsService'
@@ -80,15 +81,33 @@ const selected = computed<Conversation | null>(
  */
 const contactDrawer = ref(false)
 
+/*
+ * La conversacion abierta vive en la URL (?c=<contacto>): es a donde
+ * lleva tocar un aviso en el celular, y lo que hace que un F5 no te saque
+ * del hilo que estabas contestando.
+ */
+const route = useRoute()
+const router = useRouter()
+
+function syncUrl(contactId: string | null): void {
+  if ((route.query.c ?? null) === contactId) return
+  const query = { ...route.query }
+  if (contactId) query.c = contactId
+  else delete query.c
+  void router.replace({ query })
+}
+
 function closeConversation(): void {
   selectedId.value = null
   contactDrawer.value = false
+  syncUrl(null)
 }
 
 // Abrir un hilo lo marca leído: es lo que hace que el contador signifique
 // "hay gente esperando" y no "hay conversaciones".
 async function openConversation(contactId: string): Promise<void> {
   selectedId.value = contactId
+  syncUrl(contactId)
   try {
     await markConversationRead(contactId)
     queryClient.invalidateQueries({ queryKey: ['chats'] })
@@ -96,6 +115,16 @@ async function openConversation(contactId: string): Promise<void> {
     // Que falle marcar leído no puede impedir leer.
   }
 }
+
+watch(
+  () => route.query.c,
+  (contactId) => {
+    if (typeof contactId === 'string' && contactId && contactId !== selectedId.value) {
+      void openConversation(contactId)
+    }
+  },
+  { immediate: true },
+)
 
 // -- Quién atiende --------------------------------------------------------
 
@@ -369,8 +398,11 @@ function shortTime(iso: string): string {
         </p>
       </div>
       <div class="flex shrink-0 items-center gap-2">
+        <!-- Los avisos agrupados son de la bandeja de toda la app; quien
+             atiende un solo salón tiene la campana de arriba (su celular). -->
         <Button
-          icon="pi pi-bell"
+          v-if="!auth.isChatOnly"
+          icon="pi pi-envelope"
           label="Avisos"
           severity="secondary"
           outlined
