@@ -47,6 +47,18 @@ const displayError = computed(() => submitError.value ?? ssoError.value)
 // Quien entro alguna vez desde otra app (la recepcionista del Spa) no
 // tiene contrasena aca: si su sesion vencio, este formulario no le sirve.
 const cameFromApp = readCameFromApp()
+
+/*
+ * La puerta para la gente de los salones.
+ *
+ * Su cuenta vive en el Spa, no aqui: Connect le cree al Spa. Antes, para
+ * entrar habia que abrir la agenda, ir al menu «WhatsApp» y tocar «Abrir el
+ * chat». Este boton lleva a esa misma puerta del Spa: si ya hay sesion alla
+ * entra derecho, y si no pide el mismo correo y la misma contrasena de la
+ * agenda y vuelve aqui con la persona adentro, como usuaria de SU salon.
+ */
+const spaUrl = (import.meta.env.VITE_SPA_APP_URL || 'https://agenda.nexolu.co').replace(/\/$/, '')
+const entrarConElSpa = `${spaUrl}/abrir-connect`
 const localFormVisible = computed(() => showLocalForm.value || Boolean(ssoError.value))
 
 function entrarConNexolu(): void {
@@ -99,8 +111,20 @@ const onSubmit = handleSubmit(async (values) => {
     </div>
 
     <Message v-if="cameFromApp" severity="info" :closable="false" class="mb-5">
-      Tu sesión se cerró. Vuelve a entrar desde tu app (en Nexolú Spa, el menú «WhatsApp»).
+      Tu sesión se cerró. Vuelve a entrar con tu cuenta del Spa.
     </Message>
+
+    <div class="mb-6 rounded-xl border border-emerald-200 bg-emerald-50 p-4">
+      <p class="text-sm text-emerald-900">¿Trabajas en un salón con Nexolú Spa?</p>
+      <a
+        :href="entrarConElSpa"
+        class="mt-3 flex w-full items-center justify-center gap-2 rounded-lg bg-emerald-600 px-4 py-2.5 text-sm font-medium text-white hover:bg-emerald-700"
+      >
+        Entrar con mi cuenta del Spa
+        <i class="pi pi-arrow-right text-xs" />
+      </a>
+      <p class="mt-2 text-xs text-emerald-800">Con el mismo correo y contraseña de la agenda.</p>
+    </div>
 
     <Message v-if="displayError" severity="error" :closable="false" class="mb-5">
       {{ displayError }}
