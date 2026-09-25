@@ -71,10 +71,35 @@ export const useAuthStore = defineStore('auth', () => {
   }
 
   /** Rehidrata al usuario a partir del token guardado (recarga de pagina). */
+  /**
+   * Rehidrata al usuario Y renueva la sesion (recarga de pagina).
+   *
+   * Connect es el WhatsApp del negocio: la sesion no debe caerse nunca
+   * mientras se use. Cada vez que se abre el panel el servidor entrega un
+   * token nuevo de un año, asi que quien entra todos los dias no vuelve a
+   * ver el login. Sin redireccion automatica: corre dentro del guard.
+   */
   async function fetchCurrentUser(): Promise<User> {
-    const { data } = await httpClient.get<User>('/panel/me')
-    user.value = data
-    return data
+    const { data } = await httpClient.post<AuthResponse>('/panel/auth/refresh', null, {
+      skipAuthRedirect: true,
+    })
+    token.value = data.token
+    user.value = data.user
+    tokenStorage.set(data.token)
+    return data.user
+  }
+
+  /**
+   * Lo mismo, con el panel ya abierto: un celular deja Connect abierto
+   * semanas sin recargar. Si falla por red no pasa nada; si la sesion
+   * murio de verdad, el interceptor manda al login.
+   */
+  async function refreshSession(): Promise<void> {
+    if (!token.value) return
+    const { data } = await httpClient.post<AuthResponse>('/panel/auth/refresh')
+    token.value = data.token
+    user.value = data.user
+    tokenStorage.set(data.token)
   }
 
   async function logout(): Promise<void> {
@@ -110,6 +135,7 @@ export const useAuthStore = defineStore('auth', () => {
     exchangeTicket,
     logout,
     fetchCurrentUser,
+    refreshSession,
     clearSession,
   }
 })

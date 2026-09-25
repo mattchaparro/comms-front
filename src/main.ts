@@ -14,6 +14,7 @@ import App from './App.vue'
 import router from './router'
 import { stashSsoAssertionFromUrl } from './services/http/ssoAssertion'
 import { registerServiceWorker } from './services/push/pushService'
+import { useAuthStore } from './stores/auth.store'
 import { queryClient } from './services/query/queryClient'
 import { nexoluPreset } from './theme/nexoluPreset'
 
@@ -43,6 +44,16 @@ app.mount('#app')
 // el panel ya estaba abierto cuando tocan un aviso, el worker le pide que
 // navegue a esa conversacion en vez de abrir otra ventana.
 void registerServiceWorker()
+
+// La sesion se renueva sola mientras el panel siga abierto (un celular lo
+// deja abierto semanas): cada 6 horas se pide un token nuevo.
+setInterval(
+  () => {
+    const auth = useAuthStore()
+    if (auth.isAuthenticated) void auth.refreshSession().catch(() => undefined)
+  },
+  6 * 60 * 60 * 1000,
+)
 navigator.serviceWorker?.addEventListener('message', (event: MessageEvent) => {
   const data = event.data as { type?: string; url?: string } | null
   if (data?.type !== 'connect:open' || !data.url) return

@@ -1,6 +1,7 @@
 import axios from 'axios'
 
 import router from '@/router'
+import { useAuthStore } from '@/stores/auth.store'
 import { useFlashStore } from '@/stores/flash.store'
 
 import { embedToken } from './embedToken'
@@ -68,9 +69,14 @@ httpClient.interceptors.response.use(
     }
 
     if (status === 401 && !onLogin) {
-      tokenStorage.clear()
-      useFlashStore().set('Tu sesión expiró. Inicia sesión de nuevo.', 'warn')
-      router.push({ name: 'login' })
+      /*
+       * Cerrar la sesion ENTERA, no solo el token guardado: el store lo
+       * sigue teniendo en memoria, el guard cree que hay sesion y rebota
+       * del login de vuelta al panel -- la pantalla se quedaba trabada.
+       */
+      useAuthStore().clearSession()
+      useFlashStore().set('Tu sesión se cerró. Inicia sesión de nuevo.', 'warn')
+      void router.push({ name: 'login' })
     } else if (status === 403 && !onLogin) {
       const message = error.response?.data?.detail ?? 'No tienes permiso para esta acción.'
       useFlashStore().set(message, 'error')
