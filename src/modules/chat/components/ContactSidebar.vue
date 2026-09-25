@@ -33,6 +33,27 @@ const { data: card } = useQuery({
 const notes = ref('')
 const newTag = ref('')
 
+/*
+ * Corregir cómo se llama. El nombre lo trae la app dueña (el Spa) o el
+ * perfil de WhatsApp, y a veces llega mal: Alejandra quedó como
+ * «Reiniciar» y no había dónde arreglarlo. Al guardarlo, Connect le avisa
+ * al Spa (`contact_updated`) y la ficha de allá también cambia.
+ */
+const editingName = ref(false)
+const nameDraft = ref('')
+
+function startEditName(): void {
+  nameDraft.value = card.value?.name ?? ''
+  editingName.value = true
+}
+
+function saveName(): void {
+  const nombre = nameDraft.value.trim()
+  editingName.value = false
+  if (!card.value || nombre === '' || nombre === card.value.name) return
+  saveMutation.mutate({ name: nombre })
+}
+
 watch(
   card,
   (value) => {
@@ -42,7 +63,7 @@ watch(
 )
 
 const saveMutation = useMutation({
-  mutationFn: (patch: { notes?: string; tags?: string[] }) =>
+  mutationFn: (patch: { name?: string; notes?: string; tags?: string[] }) =>
     updateContactCard(props.contactId, patch),
   onSuccess: (updated) => {
     queryClient.setQueryData(['contact-card', props.contactId], updated)
@@ -88,7 +109,30 @@ const campos = computed(() => Object.entries(card.value?.fields ?? {}))
     class="flex w-72 shrink-0 flex-col gap-4 overflow-y-auto border-l border-slate-200 bg-slate-50/60 p-4"
   >
     <div>
-      <p class="text-sm font-semibold text-slate-800">{{ card.name || 'Sin nombre' }}</p>
+      <form v-if="editingName" class="flex items-center gap-1" @submit.prevent="saveName">
+        <InputText
+          v-model="nameDraft"
+          size="small"
+          class="min-w-0 flex-1"
+          maxlength="128"
+          autofocus
+          aria-label="Nombre del contacto"
+          @keydown.esc="editingName = false"
+        />
+        <Button type="submit" icon="pi pi-check" size="small" text aria-label="Guardar nombre" />
+      </form>
+      <p v-else class="flex items-center gap-1 text-sm font-semibold text-slate-800">
+        {{ card.name || 'Sin nombre' }}
+        <Button
+          icon="pi pi-pencil"
+          size="small"
+          text
+          rounded
+          class="!h-6 !w-6"
+          aria-label="Cambiar nombre"
+          @click="startEditName"
+        />
+      </p>
       <p class="text-xs text-slate-500">{{ card.phone }}</p>
       <Tag
         class="mt-2"
