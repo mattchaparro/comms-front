@@ -28,6 +28,7 @@ import ContactSidebar from '../components/ContactSidebar.vue'
 import InboxAlertsDialog from '../components/InboxAlertsDialog.vue'
 import NewConversationDialog from '../components/NewConversationDialog.vue'
 import {
+  addToDirectory,
   assignConversation,
   fetchConversations,
   fetchQuickReplies,
@@ -153,6 +154,57 @@ watch(
   (contactId) => {
     if (typeof contactId === 'string' && contactId && contactId !== selectedId.value) {
       void openConversation(contactId)
+    }
+  },
+  { immediate: true },
+)
+
+/*
+ * Abrir el chat de un número desde otra app: /chat?phone=57300...&name=Ana.
+ *
+ * Es a donde lleva «Escribir por WhatsApp» en una cita de la agenda del
+ * Spa. Se busca el contacto -- o se crea, si nunca escribió -- y se abre su
+ * hilo, sin que quien atiende tenga que buscarlo en la lista. La app sale de
+ * `?app=` o, si esta persona ve una sola (lo normal: la de su salón), de ahí.
+ */
+const abriendoNumero = ref(false)
+
+watch(
+  () => [route.query.phone, appOptions.value.length] as const,
+  async ([phone]) => {
+    if (typeof phone !== 'string' || !phone || abriendoNumero.value) return
+
+    const appId =
+      typeof route.query.app === 'string' && route.query.app
+        ? route.query.app
+        : appOptions.value.length === 1
+          ? appOptions.value[0]
+          : null
+
+    // Las apps todavía no cargan: el watch vuelve a entrar cuando lleguen.
+    if (!appId) return
+
+    abriendoNumero.value = true
+    const name = typeof route.query.name === 'string' ? route.query.name : undefined
+    const query = { ...route.query }
+    delete query.phone
+    delete query.name
+    delete query.app
+
+    try {
+      const contact = await addToDirectory({ app_id: appId, phone, name })
+      await router.replace({ query })
+      startConversation(contact)
+    } catch {
+      await router.replace({ query })
+      toast.add({
+        severity: 'warn',
+        summary: 'No pudimos abrir ese chat',
+        detail: 'Búscalo en la lista o con «Nueva conversación».',
+        life: 6000,
+      })
+    } finally {
+      abriendoNumero.value = false
     }
   },
   { immediate: true },
