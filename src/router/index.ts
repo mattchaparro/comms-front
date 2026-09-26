@@ -110,6 +110,11 @@ const router = createRouter({
           component: () => import('@/modules/chat/views/ChatView.vue'),
         },
         {
+          path: 'difusiones',
+          name: 'broadcasts',
+          component: () => import('@/modules/broadcasts/views/BroadcastsView.vue'),
+        },
+        {
           path: 'flujos',
           name: 'flows',
           component: () => import('@/modules/flows/views/FlowsView.vue'),
