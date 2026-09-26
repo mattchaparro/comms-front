@@ -11,6 +11,8 @@ import { computed } from 'vue'
 import { httpClient } from '@/services/http/client'
 import { useAuthStore } from '@/stores/auth.store'
 
+import WhatsappSpendPanel from '../components/WhatsappSpendPanel.vue'
+
 interface UsageBreakdown {
   key: string
   message_count: number
@@ -63,7 +65,7 @@ const usd = new Intl.NumberFormat('es-CO', {
         <p class="mt-1 text-3xl font-bold text-slate-900">{{ totals.messages }}</p>
       </div>
       <div class="rounded-xl border border-slate-200 bg-white p-5">
-        <p class="text-sm text-slate-500">Costo estimado</p>
+        <p class="text-sm text-slate-500">Costo estimado (Connect)</p>
         <p class="mt-1 text-3xl font-bold text-slate-900">{{ usd.format(totals.cost) }}</p>
       </div>
       <div class="rounded-xl border border-slate-200 bg-white p-5">
@@ -85,5 +87,7 @@ const usd = new Intl.NumberFormat('es-CO', {
         </template>
       </DataTable>
     </div>
+
+    <WhatsappSpendPanel />
   </div>
 </template>
