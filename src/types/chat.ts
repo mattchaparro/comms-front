@@ -89,3 +89,14 @@ export interface QuickReply {
   title: string
   text: string
 }
+
+/** Un contacto del directorio (DirectoryContactOut en admin_chats.py): tenga
+ * o no conversación. Para escribirle a quien nunca ha escrito. */
+export interface DirectoryContact {
+  contact_id: string
+  app_id: string
+  business_id: string
+  phone: string
+  name: string
+  has_conversation: boolean
+}

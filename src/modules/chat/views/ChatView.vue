@@ -21,11 +21,12 @@ import TemplatePreview from '@/modules/templates/components/TemplatePreview.vue'
 import { fetchTemplates } from '@/modules/templates/services/templatesService'
 import { fetchPanelUsers } from '@/modules/users/services/usersService'
 import { useAuthStore } from '@/stores/auth.store'
-import type { Conversation } from '@/types/chat'
+import type { Conversation, DirectoryContact } from '@/types/chat'
 import type { WhatsAppTemplate } from '@/types/templates'
 
 import ContactSidebar from '../components/ContactSidebar.vue'
 import InboxAlertsDialog from '../components/InboxAlertsDialog.vue'
+import NewConversationDialog from '../components/NewConversationDialog.vue'
 import {
   assignConversation,
   fetchConversations,
@@ -69,9 +70,40 @@ const conversations = computed(() => inbox.value?.items ?? [])
 const unreadTotal = computed(() => inbox.value?.unread_total ?? 0)
 
 const selectedId = ref<string | null>(null)
+/*
+ * Quien se abrio desde "Nueva conversacion" y todavia no tiene mensajes:
+ * no esta en la lista (la bandeja lista conversaciones), asi que el hilo
+ * se arma con lo que trajo el directorio hasta que salga la plantilla.
+ */
+const freshContact = ref<Conversation | null>(null)
 const selected = computed<Conversation | null>(
-  () => conversations.value.find((c) => c.contact_id === selectedId.value) ?? null,
+  () =>
+    conversations.value.find((c) => c.contact_id === selectedId.value) ??
+    (freshContact.value?.contact_id === selectedId.value ? freshContact.value : null),
 )
+
+const newConversationDialog = ref(false)
+
+function startConversation(contact: DirectoryContact): void {
+  freshContact.value = {
+    contact_id: contact.contact_id,
+    app_id: contact.app_id,
+    business_id: contact.business_id,
+    phone: contact.phone,
+    name: contact.name,
+    last_body: '',
+    last_direction: 'out',
+    last_at: new Date().toISOString(),
+    window_open: false,
+    unread: false,
+    assigned_to: null,
+    assigned_name: null,
+  }
+  void openConversation(contact.contact_id)
+  // Sin conversacion no hay ventana de 24 h: lo unico que entrega es una
+  // plantilla, asi que se ofrece de una vez.
+  if (!contact.has_conversation) openTemplates()
+}
 
 /*
  * En el celular la bandeja funciona como WhatsApp: se ve la lista O la
@@ -414,6 +446,14 @@ function shortTime(iso: string): string {
         <!-- Un filtro con una sola opción no filtra nada: ocupa sitio y
              hace dudar. Se ve cuando de verdad hay entre qué elegir, que
              es el panel de Nexolú; dentro del panel de un negocio, no. -->
+        <Button
+          icon="pi pi-pen-to-square"
+          label="Nueva"
+          class="!text-xs [&_.p-button-label]:hidden sm:[&_.p-button-label]:inline"
+          title="Escribirle a alguien que no te ha escrito"
+          aria-label="Nueva conversación"
+          @click="newConversationDialog = true"
+        />
         <Select
           v-if="appOptions.length > 1"
           v-model="appFilter"
@@ -426,6 +466,12 @@ function shortTime(iso: string): string {
     </div>
 
     <InboxAlertsDialog v-model:visible="alertsDialog" :apps="appOptions" :default-app="appFilter" />
+    <NewConversationDialog
+      v-model:visible="newConversationDialog"
+      :apps="appOptions"
+      :default-app="appFilter ?? (appOptions.length === 1 ? appOptions[0] : conversations[0]?.app_id ?? null)"
+      @open="startConversation"
+    />
 
     <div
       class="flex min-h-0 flex-1 overflow-hidden border-slate-200 bg-white sm:rounded-xl sm:border"
@@ -676,8 +722,12 @@ function shortTime(iso: string): string {
               v-if="!selected.window_open"
               class="mb-2 rounded-md bg-amber-50 px-3 py-2 text-[11px] text-amber-800"
             >
-              Pasaron más de 24 horas desde su último mensaje: WhatsApp solo entrega una
-              <strong>plantilla</strong> aprobada.
+              {{
+                (thread ?? []).length
+                  ? 'Pasaron más de 24 horas desde su último mensaje:'
+                  : 'Todavía no te ha escrito:'
+              }}
+              WhatsApp solo entrega una <strong>plantilla</strong> aprobada.
             </p>
             <div class="flex items-center gap-1.5 sm:gap-2">
               <input ref="fileInput" type="file" class="hidden" accept="image/*,.pdf" @change="attach" />

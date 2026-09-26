@@ -5,6 +5,7 @@ import type {
   ChatTemplateSend,
   ContactCard,
   Conversation,
+  DirectoryContact,
   ConversationList,
   QuickReply,
 } from '@/types/chat'
@@ -109,4 +110,21 @@ export async function saveQuickReply(payload: {
 
 export async function deleteQuickReply(id: string): Promise<void> {
   await httpClient.delete(`/v1/admin/quick-replies/${id}`)
+}
+
+export async function searchDirectory(q: string, appId?: string): Promise<DirectoryContact[]> {
+  const { data } = await httpClient.get<DirectoryContact[]>('/v1/admin/chats/directory', {
+    params: { q: q.trim(), app_id: appId || undefined },
+  })
+  return data
+}
+
+export async function addToDirectory(payload: {
+  app_id: string
+  business_id?: string
+  phone: string
+  name?: string
+}): Promise<DirectoryContact> {
+  const { data } = await httpClient.post<DirectoryContact>('/v1/admin/chats/directory', payload)
+  return data
 }
