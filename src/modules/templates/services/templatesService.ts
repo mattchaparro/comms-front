@@ -1,5 +1,11 @@
 import { httpClient } from '@/services/http/client'
-import type { TemplateCreatePayload, TemplateList, WhatsAppTemplate } from '@/types/templates'
+import type {
+  TemplateCreatePayload,
+  TemplateDraft,
+  TemplateDraftPayload,
+  TemplateList,
+  WhatsAppTemplate,
+} from '@/types/templates'
 
 // Refleja api/v1/admin_templates.py en nexolu-comms-api (autorizado por
 // scope: un cliente externo opera solo las plantillas de sus apps).
@@ -26,4 +32,13 @@ export async function syncTemplates(appId: string, businessId?: string): Promise
 
 export async function deleteTemplate(templateId: string): Promise<void> {
   await httpClient.delete(`/v1/admin/templates/${templateId}`)
+}
+
+// La IA redacta; no crea nada en Meta. Puede tardar (una o dos pasadas del
+// modelo), de ahi el timeout largo.
+export async function draftTemplate(payload: TemplateDraftPayload): Promise<TemplateDraft> {
+  const { data } = await httpClient.post<TemplateDraft>('/v1/admin/templates/draft', payload, {
+    timeout: 120000,
+  })
+  return data
 }

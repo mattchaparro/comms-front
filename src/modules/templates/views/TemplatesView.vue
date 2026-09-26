@@ -16,7 +16,7 @@ import Tag from 'primevue/tag'
 import Textarea from 'primevue/textarea'
 import { useConfirm } from 'primevue/useconfirm'
 import { useToast } from 'primevue/usetoast'
-import { computed, ref } from 'vue'
+import { computed, ref, watch } from 'vue'
 
 import { fetchCommsApps } from '@/modules/commsCore/services/commsCoreService'
 import { formatDateTime } from '@/utils/formatDateTime'
@@ -25,6 +25,7 @@ import { TEMPLATE_CATEGORIES, type TemplateCategory, type WhatsAppTemplate } fro
 import {
   createTemplate,
   deleteTemplate,
+  draftTemplate,
   fetchTemplates,
   syncTemplates,
 } from '../services/templatesService'
@@ -87,7 +88,79 @@ const formLanguage = ref('es')
 const formCategory = ref<TemplateCategory>('UTILITY')
 const formBody = ref('')
 const formFooter = ref('')
+const formButtons = ref<string[]>(['', '', ''])
+const formExamples = ref<string[]>([])
 const formError = ref<string | null>(null)
+
+// Meta exige un ejemplo por cada variable del cuerpo; sin el, la rechaza.
+const variableCount = computed(() => {
+  const numbers = [...formBody.value.matchAll(/\{\{(\d+)\}\}/g)].map((m) => Number(m[1]))
+  return numbers.length ? Math.max(...numbers) : 0
+})
+watch(variableCount, (n) => {
+  formExamples.value = Array.from({ length: n }, (_, i) => formExamples.value[i] ?? '')
+})
+
+function buildComponents(): Record<string, unknown>[] {
+  const body: Record<string, unknown> = { type: 'BODY', text: formBody.value.trim() }
+  if (formExamples.value.length) body.example = { body_text: [formExamples.value.map((e) => e.trim())] }
+  const components: Record<string, unknown>[] = [body]
+  if (formFooter.value.trim()) components.push({ type: 'FOOTER', text: formFooter.value.trim() })
+  const buttons = formButtons.value.map((b) => b.trim()).filter(Boolean)
+  if (buttons.length) {
+    components.push({ type: 'BUTTONS', buttons: buttons.map((text) => ({ type: 'QUICK_REPLY', text })) })
+  }
+  return components
+}
+const previewComponents = computed(() => buildComponents())
+
+// --- redactar con IA ---
+
+const aiDescription = ref('')
+const aiCategory = ref<'UTILITY' | 'MARKETING' | null>(null)
+const aiNotes = ref('')
+const aiIssues = ref<string[]>([])
+
+const draftMutation = useMutation({
+  mutationFn: () =>
+    draftTemplate({
+      app_id: formApp.value as string,
+      description: aiDescription.value.trim(),
+      category: aiCategory.value ?? undefined,
+    }),
+  onSuccess: (draft) => {
+    formName.value = draft.name
+    if ((TEMPLATE_CATEGORIES as readonly string[]).includes(draft.category)) {
+      formCategory.value = draft.category as TemplateCategory
+    }
+    formBody.value = draft.body
+    formFooter.value = draft.footer
+    formButtons.value = [0, 1, 2].map((i) => draft.buttons[i] ?? '')
+    // El watch de variableCount corre despues: se fijan los ejemplos ya.
+    formExamples.value = [...draft.example_params]
+    aiNotes.value = draft.notes
+    aiIssues.value = draft.issues
+  },
+  onError: (error) => {
+    formError.value =
+      isAxiosError<{ detail?: string }>(error) && typeof error.response?.data?.detail === 'string'
+        ? error.response.data.detail
+        : 'La IA no respondió. Intenta de nuevo en un momento.'
+  },
+})
+
+function draftWithAi(): void {
+  formError.value = null
+  if (!formApp.value) {
+    formError.value = 'Elige primero la app dueña de la plantilla.'
+    return
+  }
+  if (aiDescription.value.trim().length < 5) {
+    formError.value = 'Cuéntale a la IA qué quieres decir.'
+    return
+  }
+  draftMutation.mutate()
+}
 
 function openCreate(): void {
   formApp.value = appFilter.value ?? (appOptions.value.length === 1 ? appOptions.value[0] : null)
@@ -96,16 +169,19 @@ function openCreate(): void {
   formCategory.value = 'UTILITY'
   formBody.value = ''
   formFooter.value = ''
+  formButtons.value = ['', '', '']
+  formExamples.value = []
+  aiDescription.value = ''
+  aiCategory.value = null
+  aiNotes.value = ''
+  aiIssues.value = []
   formError.value = null
   dialogVisible.value = true
 }
 
 const createMutation = useMutation({
   mutationFn: () => {
-    const components: Record<string, unknown>[] = [{ type: 'BODY', text: formBody.value.trim() }]
-    if (formFooter.value.trim()) {
-      components.push({ type: 'FOOTER', text: formFooter.value.trim() })
-    }
+    const components = buildComponents()
     return createTemplate({
       app_id: formApp.value as string,
       name: formName.value.trim(),
@@ -144,6 +220,15 @@ function save(): void {
   }
   if (!formBody.value.trim()) {
     formError.value = 'El cuerpo es obligatorio. Variables como {{1}}, {{2}}.'
+    return
+  }
+  if (formExamples.value.some((e) => !e.trim())) {
+    formError.value = 'Pon un ejemplo para cada variable: Meta los pide para revisarla.'
+    return
+  }
+  const bad = formButtons.value.find((b) => b.trim().length > 25 || /\p{Extended_Pictographic}/u.test(b))
+  if (bad) {
+    formError.value = `El botón "${bad}" debe tener máximo 25 caracteres y sin emojis.`
     return
   }
   createMutation.mutate()
@@ -347,56 +432,124 @@ const statusSeverity: Record<string, 'success' | 'danger' | 'warn' | 'info' | 's
       modal
       header="Nueva plantilla"
       :draggable="false"
-      class="w-full max-w-md"
+      class="w-full max-w-4xl"
     >
-      <div class="flex flex-col gap-4">
-        <Message v-if="formError" severity="error" :closable="false">{{ formError }}</Message>
-        <Message severity="info" :closable="false">
-          Meta revisa cada plantilla (hasta 24h, normalmente minutos). Variables como
-          <code v-pre>{{1}}</code> en el cuerpo.
-        </Message>
+      <div class="grid gap-6 md:grid-cols-[1fr_280px]">
+        <div class="flex flex-col gap-4">
+          <Message v-if="formError" severity="error" :closable="false">{{ formError }}</Message>
 
-        <div class="flex flex-col gap-1.5">
-          <label class="text-sm font-medium text-slate-700">App</label>
-          <Select v-model="formApp" :options="appOptions" placeholder="App dueña" fluid />
-        </div>
-
-        <div class="grid grid-cols-3 gap-3">
-          <div class="col-span-2 flex flex-col gap-1.5">
-            <label class="text-sm font-medium text-slate-700">Nombre</label>
-            <InputText v-model="formName" placeholder="recordatorio_cita" fluid />
-          </div>
           <div class="flex flex-col gap-1.5">
-            <label class="text-sm font-medium text-slate-700">Idioma</label>
-            <InputText v-model="formLanguage" fluid />
+            <label class="text-sm font-medium text-slate-700">App</label>
+            <Select v-model="formApp" :options="appOptions" placeholder="App dueña" fluid />
+          </div>
+
+          <!-- Redactar con IA: propone todo el formulario; se revisa antes de enviar -->
+          <div class="flex flex-col gap-2 rounded-xl border border-violet-200 bg-violet-50/60 p-3">
+            <label class="text-sm font-medium text-violet-900">
+              <i class="pi pi-sparkles mr-1" /> Redactar con IA
+            </label>
+            <Textarea
+              v-model="aiDescription"
+              rows="2"
+              auto-resize
+              fluid
+              placeholder="Qué quieres decir. Ej: saludar a la clienta y pedirle un minuto para hablar por este chat, sin vender nada."
+            />
+            <div class="flex flex-wrap items-center gap-2">
+              <Select
+                v-model="aiCategory"
+                :options="[
+                  { label: 'Que la IA decida', value: null },
+                  { label: 'Utilidad (no promociona)', value: 'UTILITY' },
+                  { label: 'Marketing', value: 'MARKETING' },
+                ]"
+                option-label="label"
+                option-value="value"
+                class="w-56"
+                size="small"
+              />
+              <Button
+                label="Redactar"
+                icon="pi pi-sparkles"
+                size="small"
+                :loading="draftMutation.isPending.value"
+                @click="draftWithAi"
+              />
+            </div>
+            <p v-if="aiNotes" class="text-xs text-violet-900">{{ aiNotes }}</p>
+            <Message v-if="aiIssues.length" severity="warn" :closable="false">
+              Corrige antes de enviar:
+              <ul class="ml-4 list-disc">
+                <li v-for="issue in aiIssues" :key="issue">{{ issue }}</li>
+              </ul>
+            </Message>
+          </div>
+
+          <div class="grid grid-cols-3 gap-3">
+            <div class="col-span-2 flex flex-col gap-1.5">
+              <label class="text-sm font-medium text-slate-700">Nombre</label>
+              <InputText v-model="formName" placeholder="recordatorio_cita" fluid />
+            </div>
+            <div class="flex flex-col gap-1.5">
+              <label class="text-sm font-medium text-slate-700">Idioma</label>
+              <InputText v-model="formLanguage" fluid />
+            </div>
+          </div>
+
+          <div class="flex flex-col gap-1.5">
+            <label class="text-sm font-medium text-slate-700">Categoría</label>
+            <Select v-model="formCategory" :options="[...TEMPLATE_CATEGORIES]" fluid />
+          </div>
+
+          <div class="flex flex-col gap-1.5">
+            <label class="text-sm font-medium text-slate-700">Cuerpo</label>
+            <Textarea v-model="formBody" rows="4" auto-resize fluid />
+          </div>
+
+          <div v-if="formExamples.length" class="flex flex-col gap-1.5">
+            <label class="text-sm font-medium text-slate-700">
+              Ejemplos <span class="font-normal text-slate-400">(Meta los pide para revisarla)</span>
+            </label>
+            <div v-for="(_, i) in formExamples" :key="i" class="flex items-center gap-2">
+              <span class="w-10 shrink-0 font-mono text-xs text-slate-400" v-text="`{{${i + 1}}}`" />
+              <InputText v-model="formExamples[i]" fluid placeholder="María" />
+            </div>
+          </div>
+
+          <div class="flex flex-col gap-1.5">
+            <label class="text-sm font-medium text-slate-700">
+              Pie <span class="font-normal text-slate-400">(opcional)</span>
+            </label>
+            <InputText v-model="formFooter" fluid />
+          </div>
+
+          <div class="flex flex-col gap-1.5">
+            <label class="text-sm font-medium text-slate-700">
+              Botones de respuesta
+              <span class="font-normal text-slate-400">(opcional, máx. 25 caracteres, sin emojis)</span>
+            </label>
+            <div class="grid gap-2 sm:grid-cols-3">
+              <InputText v-for="(_, i) in formButtons" :key="i" v-model="formButtons[i]" :placeholder="`Botón ${i + 1}`" />
+            </div>
+          </div>
+
+          <div class="flex gap-2 pt-2">
+            <Button label="Cancelar" severity="secondary" outlined class="flex-1" @click="dialogVisible = false" />
+            <Button
+              label="Enviar a revisión"
+              class="flex-[2]"
+              :loading="createMutation.isPending.value"
+              @click="save"
+            />
           </div>
         </div>
 
-        <div class="flex flex-col gap-1.5">
-          <label class="text-sm font-medium text-slate-700">Categoría</label>
-          <Select v-model="formCategory" :options="[...TEMPLATE_CATEGORIES]" fluid />
-        </div>
-
-        <div class="flex flex-col gap-1.5">
-          <label class="text-sm font-medium text-slate-700">Cuerpo</label>
-          <Textarea v-model="formBody" rows="4" auto-resize fluid />
-        </div>
-
-        <div class="flex flex-col gap-1.5">
-          <label class="text-sm font-medium text-slate-700">
-            Pie <span class="font-normal text-slate-400">(opcional)</span>
-          </label>
-          <InputText v-model="formFooter" fluid />
-        </div>
-
-        <div class="flex gap-2 pt-2">
-          <Button label="Cancelar" severity="secondary" outlined class="flex-1" @click="dialogVisible = false" />
-          <Button
-            label="Enviar a revisión"
-            class="flex-[2]"
-            :loading="createMutation.isPending.value"
-            @click="save"
-          />
+        <div class="rounded-xl bg-[#e5ddd5] p-4">
+          <p class="mb-2 text-[11px] font-semibold uppercase tracking-wide text-slate-500">
+            Así la ve la clienta
+          </p>
+          <TemplatePreview v-if="formBody.trim()" :components="previewComponents" :params="formExamples" />
+          <p v-else class="text-sm text-slate-500">Escribe el cuerpo o redáctalo con IA.</p>
         </div>
       </div>
     </Dialog>

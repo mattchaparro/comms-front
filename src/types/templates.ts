@@ -35,3 +35,24 @@ export interface TemplateCreatePayload {
   category: TemplateCategory
   components: Record<string, unknown>[]
 }
+
+// Refleja TemplateDraftIn / TemplateDraftOut (POST /v1/admin/templates/draft).
+export interface TemplateDraftPayload {
+  app_id: string
+  business_id?: string
+  description: string
+  category?: 'UTILITY' | 'MARKETING'
+}
+
+export interface TemplateDraft {
+  name: string
+  category: string
+  body: string
+  footer: string
+  buttons: string[]
+  example_params: string[]
+  notes: string
+  /** Lo que todavía no cumple las reglas de Meta: corregirlo antes de enviar. */
+  issues: string[]
+  components: Record<string, unknown>[]
+}
