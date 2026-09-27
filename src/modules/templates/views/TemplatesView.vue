@@ -117,6 +117,24 @@ const previewComponents = computed(() => buildComponents())
 // --- redactar con IA ---
 
 const aiDescription = ref('')
+// Como firma el mensaje ("Luxury Nails"): una app puede tener muchos
+// negocios y Connect no sabe sus nombres. Se recuerda en este navegador.
+const BUSINESS_NAME_KEY = 'connect.templates.businessName'
+function readBusinessName(): string {
+  try {
+    return localStorage.getItem(BUSINESS_NAME_KEY) ?? ''
+  } catch {
+    return ''
+  }
+}
+const aiBusinessName = ref(readBusinessName())
+watch(aiBusinessName, (value) => {
+  try {
+    localStorage.setItem(BUSINESS_NAME_KEY, value.trim())
+  } catch {
+    // Sin almacenamiento, se vuelve a escribir la próxima vez.
+  }
+})
 const aiCategory = ref<'UTILITY' | 'MARKETING' | null>(null)
 const aiNotes = ref('')
 const aiIssues = ref<string[]>([])
@@ -127,6 +145,7 @@ const draftMutation = useMutation({
       app_id: formApp.value as string,
       description: aiDescription.value.trim(),
       category: aiCategory.value ?? undefined,
+      business_name: aiBusinessName.value.trim(),
     }),
   onSuccess: (draft) => {
     formName.value = draft.name
@@ -448,6 +467,7 @@ const statusSeverity: Record<string, 'success' | 'danger' | 'warn' | 'info' | 's
             <label class="text-sm font-medium text-violet-900">
               <i class="pi pi-sparkles mr-1" /> Redactar con IA
             </label>
+            <InputText v-model="aiBusinessName" placeholder="Nombre del negocio (ej: Luxury Nails)" size="small" fluid />
             <Textarea
               v-model="aiDescription"
               rows="2"

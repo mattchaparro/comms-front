@@ -42,6 +42,7 @@ export interface TemplateDraftPayload {
   business_id?: string
   description: string
   category?: 'UTILITY' | 'MARKETING'
+  business_name?: string
 }
 
 export interface TemplateDraft {
