@@ -77,6 +77,11 @@ export async function sendChatTemplate(
   return data
 }
 
+/** «Reactivar bot»: la app que pausó su bot con este contacto vuelve a atenderlo. */
+export async function resumeBot(contactId: string): Promise<void> {
+  await httpClient.post(`/v1/admin/chats/${contactId}/bot/resume`)
+}
+
 export async function fetchContactCard(contactId: string): Promise<ContactCard> {
   const { data } = await httpClient.get<ContactCard>(`/v1/admin/chats/${contactId}`)
   return data

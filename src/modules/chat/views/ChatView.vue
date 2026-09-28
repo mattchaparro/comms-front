@@ -30,10 +30,12 @@ import NewConversationDialog from '../components/NewConversationDialog.vue'
 import {
   addToDirectory,
   assignConversation,
+  fetchContactCard,
   fetchConversations,
   fetchQuickReplies,
   fetchThread,
   markConversationRead,
+  resumeBot,
   sendChatMedia,
   sendChatMessage,
   sendChatTemplate,
@@ -209,6 +211,44 @@ watch(
   },
   { immediate: true },
 )
+
+// -- El bot de la app, en pausa ---------------------------------------------
+
+/*
+ * La app (el Spa) calla a su bot cuando alguien del equipo contesta, por dos
+ * horas, y aquí lo marca en la ficha (`bot_paused_until`). Se muestra arriba
+ * del hilo con «Reactivar bot»: antes no había cómo quitar la pausa desde
+ * Connect. La ficha se relee cada 30 s mientras el hilo está abierto: la
+ * pausa llega un momento después de contestar.
+ */
+const { data: selectedCard } = useQuery({
+  queryKey: computed(() => ['contact-card', selectedId.value] as const),
+  queryFn: () => fetchContactCard(selectedId.value as string),
+  enabled: computed(() => selectedId.value !== null),
+  refetchInterval: 30_000,
+})
+
+const botPausadoHasta = computed<Date | null>(() => {
+  const valor = selectedCard.value?.fields?.bot_paused_until
+  if (typeof valor !== 'string') return null
+  const hasta = new Date(valor)
+  return hasta.getTime() > Date.now() ? hasta : null
+})
+
+const resumeMutation = useMutation({
+  mutationFn: () => resumeBot(selectedId.value as string),
+  onSuccess: () => {
+    queryClient.invalidateQueries({ queryKey: ['contact-card', selectedId.value] })
+    toast.add({
+      severity: 'success',
+      summary: 'Bot reactivado',
+      detail: 'Vuelve a contestarle a este contacto.',
+      life: 4000,
+    })
+  },
+  onError: () =>
+    toast.add({ severity: 'error', summary: 'No pudimos reactivarlo', detail: 'Intenta de nuevo.', life: 5000 }),
+})
 
 // -- Quién atiende --------------------------------------------------------
 
@@ -680,6 +720,27 @@ function shortTime(iso: string): string {
               @click="contactDrawer = true"
             >
               <i class="pi pi-info-circle text-lg" />
+            </button>
+          </div>
+
+          <!-- El bot de la app está callado porque alguien del equipo contestó. -->
+          <div
+            v-if="botPausadoHasta"
+            class="flex shrink-0 items-center justify-between gap-2 border-b border-amber-200 bg-amber-50 px-3 py-1.5 text-xs text-amber-900 sm:px-4"
+          >
+            <span class="min-w-0">
+              <i class="pi pi-pause-circle mr-1" />
+              El bot está en pausa hasta las
+              {{ botPausadoHasta.toLocaleTimeString('es-CO', { hour: 'numeric', minute: '2-digit' }) }}:
+              estás atendiendo tú.
+            </span>
+            <button
+              type="button"
+              class="shrink-0 rounded-md border border-amber-300 bg-white px-2.5 py-1 font-medium text-amber-900 hover:bg-amber-100 disabled:opacity-50"
+              :disabled="resumeMutation.isPending.value"
+              @click="resumeMutation.mutate()"
+            >
+              Reactivar bot
             </button>
           </div>
 
