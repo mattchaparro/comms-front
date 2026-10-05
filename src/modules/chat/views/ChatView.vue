@@ -24,7 +24,9 @@ import { useAuthStore } from '@/stores/auth.store'
 import type { Conversation, DirectoryContact } from '@/types/chat'
 import type { WhatsAppTemplate } from '@/types/templates'
 
+import ChatMedia from '../components/ChatMedia.vue'
 import ContactSidebar from '../components/ContactSidebar.vue'
+import VoiceRecorder from '../components/VoiceRecorder.vue'
 import InboxAlertsDialog from '../components/InboxAlertsDialog.vue'
 import NewConversationDialog from '../components/NewConversationDialog.vue'
 import {
@@ -39,6 +41,7 @@ import {
   sendChatMedia,
   sendChatMessage,
   sendChatTemplate,
+  uploadVoiceNote,
 } from '../services/chatService'
 
 /**
@@ -364,6 +367,29 @@ async function attach(event: Event): Promise<void> {
     toast.add({ severity: 'error', summary: 'No se pudo enviar el archivo', life: 5000 })
   } finally {
     uploading.value = false
+  }
+}
+
+// -- Nota de voz -------------------------------------------------------------
+
+const grabando = ref(false)
+const enviandoVoz = ref(false)
+
+async function sendVoice(file: File): Promise<void> {
+  if (!selectedId.value) return
+  enviandoVoz.value = true
+  try {
+    const { url } = await uploadVoiceNote(file)
+    const message = await sendChatMedia(selectedId.value, { kind: 'audio', url })
+    queryClient.invalidateQueries({ queryKey: ['chat-thread', selectedId.value] })
+    queryClient.invalidateQueries({ queryKey: ['chats'] })
+    if (message.status !== 'sent') {
+      toast.add({ severity: 'warn', summary: 'WhatsApp no lo entregó', life: 6000 })
+    }
+  } catch {
+    toast.add({ severity: 'error', summary: 'No se pudo enviar la nota de voz', life: 5000 })
+  } finally {
+    enviandoVoz.value = false
   }
 }
 
@@ -760,18 +786,13 @@ function shortTime(iso: string): string {
                       : 'rounded-tl-sm bg-white text-slate-800'
                   "
                 >
-                  <p v-if="message.payload.media_kind || MEDIA_ICONS[message.message_type]" class="mb-0.5 text-slate-500">
-                    <i :class="MEDIA_ICONS[message.payload.media_kind ?? message.message_type] ?? 'pi pi-file'" class="mr-1 text-xs" />
-                    <a
-                      v-if="message.payload.media_url"
-                      :href="message.payload.media_url"
-                      target="_blank"
-                      class="text-teal-700 underline"
-                    >
-                      {{ message.payload.media_kind ?? message.message_type }}
-                    </a>
-                    <template v-else>{{ message.payload.media_kind ?? message.message_type }}</template>
-                  </p>
+                  <!-- El archivo de verdad (audio que se escucha, imagen que se
+                       ve), no la palabra «audio». -->
+                  <ChatMedia
+                    v-if="(message.payload.media_kind || MEDIA_ICONS[message.message_type]) && selectedId"
+                    :message="message"
+                    :contact-id="selectedId"
+                  />
                   <p v-if="message.payload.template" class="text-[11px] italic text-fuchsia-700">
                     Plantilla «{{ message.payload.template }}»
                   </p>
@@ -866,7 +887,14 @@ function shortTime(iso: string): string {
                 class="shrink-0 !text-xs [&_.p-button-label]:hidden sm:[&_.p-button-label]:inline"
                 @click="openTemplates"
               />
+              <VoiceRecorder
+                v-if="selected.window_open && !reply.trim()"
+                :sending="enviandoVoz"
+                @recording="grabando = $event"
+                @recorded="sendVoice"
+              />
               <InputText
+                v-show="!grabando"
                 v-model="reply"
                 :placeholder="selected.window_open ? 'Escribe tu respuesta…' : 'Ventana cerrada: usa una plantilla'"
                 class="min-w-0 flex-1 !rounded-full !text-sm"
@@ -874,6 +902,7 @@ function shortTime(iso: string): string {
                 @keyup.enter="send"
               />
               <Button
+                v-show="!grabando"
                 icon="pi pi-send"
                 rounded
                 class="shrink-0"

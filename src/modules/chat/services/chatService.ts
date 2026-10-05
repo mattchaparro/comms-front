@@ -77,6 +77,22 @@ export async function sendChatTemplate(
   return data
 }
 
+/** El archivo que mandó la clienta (audio, imagen…), descargado de Meta por el servidor. */
+export async function fetchInboundMedia(contactId: string, messageId: string): Promise<Blob> {
+  const { data } = await httpClient.get<Blob>(`/v1/admin/chats/${contactId}/messages/${messageId}/media`, {
+    responseType: 'blob',
+  })
+  return data
+}
+
+/** Una nota de voz grabada: el servidor la deja en ogg/opus, lo que acepta WhatsApp. */
+export async function uploadVoiceNote(file: File): Promise<{ url: string; filename: string }> {
+  const form = new FormData()
+  form.append('file', file)
+  const { data } = await httpClient.post<{ url: string; filename: string }>('/v1/admin/media/voice', form)
+  return data
+}
+
 /** «Reactivar bot»: la app que pausó su bot con este contacto vuelve a atenderlo. */
 export async function resumeBot(contactId: string): Promise<void> {
   await httpClient.post(`/v1/admin/chats/${contactId}/bot/resume`)
