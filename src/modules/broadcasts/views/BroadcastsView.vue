@@ -152,6 +152,21 @@ const fixedParams = computed(() =>
     .filter((p) => p.text && !p.text.includes('{nombre')),
 )
 
+// Atajos para armar el público sin tocar cada campo.
+function daysAgo(n: number): string {
+  const d = new Date(Date.now() - n * 86_400_000 - 5 * 3600 * 1000)
+  return d.toISOString().slice(0, 10)
+}
+function usePreset(kind: 'wrote' | 'not_received' | 'clear'): void {
+  if (kind === 'wrote') {
+    form.value.audience = { ...form.value.audience, wrote_since: daysAgo(30) }
+  } else if (kind === 'not_received' && template.value) {
+    form.value.audience = { ...form.value.audience, not_received_templates: [template.value.name] }
+  } else if (kind === 'clear') {
+    form.value.audience = {}
+  }
+}
+
 function openCreate(): void {
   editingId.value = null
   form.value = {
@@ -343,6 +358,7 @@ function pct(n: number, total: number): string {
 
 function audienceSummary(a: BroadcastAudience): string {
   const parts: string[] = []
+  if (a.wrote_since) parts.push(`escribieron desde ${a.wrote_since}`)
   if (a.last_visit_from) parts.push(`vino desde ${a.last_visit_from}`)
   if (a.last_visit_to) parts.push(`vino hasta ${a.last_visit_to}`)
   if (a.no_visit_since) parts.push(`no viene desde ${a.no_visit_since}`)
@@ -517,6 +533,16 @@ function audienceSummary(a: BroadcastAudience): string {
 
           <fieldset class="flex flex-col gap-3 rounded-xl border border-slate-200 p-4">
             <legend class="px-1 text-sm font-medium text-slate-700">¿A quién?</legend>
+            <div class="flex flex-wrap items-center gap-2">
+              <span class="text-xs text-slate-500">Atajos:</span>
+              <Button label="Escribieron en los últimos 30 días" size="small" severity="secondary" outlined @click="usePreset('wrote')" />
+              <Button label="Aún no recibieron ESTA plantilla" size="small" severity="secondary" outlined :disabled="!template" @click="usePreset('not_received')" />
+              <Button label="Quitar filtros" size="small" severity="secondary" text @click="usePreset('clear')" />
+            </div>
+            <div class="flex flex-col gap-1">
+              <label class="text-xs text-slate-500">Escribieron desde (han hablado con nosotros)</label>
+              <input v-model="form.audience.wrote_since" type="date" class="w-48 rounded-md border border-slate-300 px-2 py-1.5 text-sm" />
+            </div>
             <div class="grid grid-cols-2 gap-3">
               <div class="flex flex-col gap-1">
                 <label class="text-xs text-slate-500">Vino desde</label>
@@ -583,6 +609,20 @@ function audienceSummary(a: BroadcastAudience): string {
                 </span>
               </span>
             </div>
+            <p
+              v-if="preview && (preview.excluded_no_opt_in || preview.excluded_unknown)"
+              class="rounded-md bg-amber-50 px-3 py-2 text-xs text-amber-800"
+              data-testid="excluded-note"
+            >
+              Otras personas cumplen esto pero <b>no se les puede mandar</b>:
+              <template v-if="preview.excluded_no_opt_in">
+                <b>{{ preview.excluded_no_opt_in }}</b> pidieron no recibir promociones.
+              </template>
+              <template v-if="preview.excluded_unknown">
+                <b>{{ preview.excluded_unknown }}</b> no tienen ficha o no se ha sincronizado si aceptan
+                promociones (se actualiza cada hora).
+              </template>
+            </p>
             <p v-if="preview && preview.sample.length" class="text-xs text-slate-500">
               Por ejemplo: {{ preview.sample.slice(0, 6).map((c) => c.name || c.phone).join(', ') }}…
             </p>

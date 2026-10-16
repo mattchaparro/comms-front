@@ -15,6 +15,8 @@ export interface BroadcastAudience {
   // Quienes ya recibieron alguna de estas plantillas / ninguna de ellas.
   received_templates?: string[]
   not_received_templates?: string[]
+  // YYYY-MM-DD: quienes escribieron desde esa fecha.
+  wrote_since?: string
   require_marketing_opt_in?: boolean
 }
 
@@ -52,6 +54,10 @@ export interface BroadcastPreview {
   category: string | null
   template_status: string | null
   sample: { name: string; phone: string }[]
+  // Cumplen lo demás pero no se les puede mandar: pidieron no recibir
+  // promociones / no se sabe (sin ficha o sin sincronizar).
+  excluded_no_opt_in: number
+  excluded_unknown: number
 }
 
 export interface BroadcastReport {
