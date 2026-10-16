@@ -32,11 +32,23 @@ export function renderParam(raw: string, name: string): string {
     .trim()
 }
 
-/** El cuerpo de la plantilla con cada {{n}} reemplazado por su variable. */
+/**
+ * El cuerpo de la plantilla con cada {{n}} reemplazado por su variable.
+ *
+ * Si la variable va justo después de un saludo («¡Hola {{1}}!») y no usa
+ * {nombre}, se pone {nombre}: una difusión salió con un nombre de ejemplo
+ * («Hola Mateo») igual para todas, y el mensaje a mano no debe repetirlo.
+ */
 export function bodyWithParams(components: Record<string, unknown>[], params: string[]): string {
   const body = components.find((c) => String(c.type).toUpperCase() === 'BODY')
   const text = typeof body?.text === 'string' ? body.text : ''
-  return text.replace(/\{\{(\d+)\}\}/g, (_, n: string) => params[Number(n) - 1] ?? '')
+
+  return text.replace(/\{\{(\d+)\}\}/g, (_: string, n: string, offset: number) => {
+    const raw = params[Number(n) - 1] ?? ''
+    const afterGreeting = /(hola|buenas|buenos d[ií]as|hey)[\s,!¡]*$/i.test(text.slice(0, offset))
+
+    return afterGreeting && !raw.includes('{nombre') ? '{nombre}' : raw
+  })
 }
 
 /**

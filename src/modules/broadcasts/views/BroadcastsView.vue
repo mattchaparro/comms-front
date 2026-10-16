@@ -143,6 +143,15 @@ function sampleParam(raw: string): string {
 }
 const sampleParams = computed(() => form.value.params.map(sampleParam))
 
+// Las variables SIN {nombre}: se mandan tal cual, iguales, a todas. Una
+// difusión salió con «¡Hola Mateo!» para todas las clientas porque se escribió
+// un nombre de ejemplo en la variable, creyendo que era solo una muestra.
+const fixedParams = computed(() =>
+  form.value.params
+    .map((p, i) => ({ n: i + 1, text: p.trim() }))
+    .filter((p) => p.text && !p.text.includes('{nombre')),
+)
+
 function openCreate(): void {
   editingId.value = null
   form.value = {
@@ -241,9 +250,13 @@ function schedule(now: boolean): void {
     return
   }
   const count = preview.value?.count
+  const fixed = fixedParams.value
+    .map((p) => `{{${p.n}}} dirá «${p.text}» para TODAS`)
+    .join('; ')
   confirm.require({
     header: now ? 'Enviar ahora' : 'Programar difusión',
     message:
+      (fixed ? `⚠️ Ojo: ${fixed}. Si es un nombre, usa {nombre} para que cambie por cada persona. ` : '') +
       (count !== undefined ? `Le llegará a ${count} persona(s). ` : '') +
       (now ? 'Sale en menos de un minuto.' : `Sale el ${form.value.when.replace('T', ' a las ')}.`) +
       ' Puedes cancelarla mientras no haya salido.',
@@ -484,6 +497,17 @@ function audienceSummary(a: BroadcastAudience): string {
               <span class="w-10 shrink-0 font-mono text-xs text-slate-400" v-text="`{{${i + 1}}}`" />
               <InputText v-model="form.params[i]" fluid placeholder="Hola {nombre}" />
             </div>
+            <p
+              v-if="fixedParams.length"
+              class="rounded-md bg-amber-50 px-3 py-2 text-xs text-amber-800"
+              data-testid="fixed-params-warning"
+            >
+              <b>Ojo:</b> lo que escribes aquí se manda <b>igual a todas</b>, no es un ejemplo.
+              <template v-for="p in fixedParams" :key="p.n">
+                La variable {{ '{' + '{' + p.n + '}' + '}' }} dirá «{{ p.text }}» para todas.
+              </template>
+              Si es el nombre, escribe <code>{nombre}</code> (o <code>{nombre|amiga}</code>).
+            </p>
             <p class="text-xs text-slate-400">
               <code>{nombre}</code> se cambia por el nombre de cada persona. Si su nombre no sirve para
               saludar (un punto, un emoji) queda vacío; <code>{nombre|hermosa}</code> usa “hermosa” en
