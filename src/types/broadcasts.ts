@@ -12,6 +12,9 @@ export interface BroadcastAudience {
   attended_by?: string
   tags_any?: string[]
   tags_none?: string[]
+  // Quienes ya recibieron alguna de estas plantillas / ninguna de ellas.
+  received_templates?: string[]
+  not_received_templates?: string[]
   require_marketing_opt_in?: boolean
 }
 

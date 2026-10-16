@@ -13,6 +13,7 @@ import Dialog from 'primevue/dialog'
 import InputNumber from 'primevue/inputnumber'
 import InputText from 'primevue/inputtext'
 import Message from 'primevue/message'
+import MultiSelect from 'primevue/multiselect'
 import Select from 'primevue/select'
 import Tag from 'primevue/tag'
 import { useConfirm } from 'primevue/useconfirm'
@@ -24,6 +25,8 @@ import TemplatePreview from '@/modules/templates/components/TemplatePreview.vue'
 import { fetchTemplates } from '@/modules/templates/services/templatesService'
 import type { Broadcast, BroadcastAudience, BroadcastPayload, BroadcastStatus } from '@/types/broadcasts'
 import { formatDateTime } from '@/utils/formatDateTime'
+
+import { bodyWithParams, messageFor, whatsappLink } from '../utils/manualMessage'
 
 import {
   cancelBroadcast,
@@ -115,6 +118,9 @@ const templateOptions = computed(() =>
     label: `${t.name} · ${t.language} · ${t.category === 'MARKETING' ? 'Marketing' : t.category === 'UTILITY' ? 'Utilidad' : t.category}`,
   })),
 )
+// Toda plantilla de la app, aprobada o no: sirve para decir «a quienes ya
+// les escribimos con esta».
+const templateNames = computed(() => [...new Set((templates.value ?? []).map((t) => t.name))].sort())
 const template = computed(() =>
   approved.value.find((t) => `${t.name}|${t.language}` === form.value.template_key) ?? null,
 )
@@ -293,6 +299,31 @@ const { data: recipients } = useQuery({
 })
 const failedRecipients = computed(() => (recipients.value ?? []).filter((r) => r.status === 'failed'))
 
+// --- envío a mano a quien no le llegó ---
+
+// El texto de la plantilla de ESTA difusión, para escribirlo desde otro
+// WhatsApp. Se puede editar: no hay botones, así que conviene ajustar el final.
+const { data: reportTemplates } = useQuery({
+  queryKey: ['whatsapp-templates', computed(() => report.value?.broadcast.app_id)] as const,
+  queryFn: () => fetchTemplates(report.value?.broadcast.app_id),
+  enabled: computed(() => !!report.value?.broadcast.app_id),
+})
+const manualDraft = ref('')
+watch(
+  () => [reportId.value, report.value?.broadcast.id, reportTemplates.value?.length],
+  () => {
+    const b = report.value?.broadcast
+    const t = (reportTemplates.value ?? []).find(
+      (x) => b && x.name === b.template_name && x.language === b.template_language,
+    )
+    if (b && t) manualDraft.value = bodyWithParams(t.components, b.template_params)
+  },
+  { immediate: true },
+)
+function manualLink(r: { name: string; phone: string }): string {
+  return whatsappLink(r.phone, messageFor(manualDraft.value, r.name))
+}
+
 function pct(n: number, total: number): string {
   return total ? `${Math.round((n / total) * 100)}%` : '—'
 }
@@ -307,6 +338,8 @@ function audienceSummary(a: BroadcastAudience): string {
   if (a.attended_by) parts.push(`atendida por ${a.attended_by}`)
   if (a.tags_any?.length) parts.push(`con ${a.tags_any.join(', ')}`)
   if (a.tags_none?.length) parts.push(`sin ${a.tags_none.join(', ')}`)
+  if (a.received_templates?.length) parts.push(`ya recibieron ${a.received_templates.join(', ')}`)
+  if (a.not_received_templates?.length) parts.push(`no recibieron ${a.not_received_templates.join(', ')}`)
   return parts.length ? parts.join(' · ') : 'Todos los contactos'
 }
 </script>
@@ -486,6 +519,28 @@ function audienceSummary(a: BroadcastAudience): string {
                 <InputNumber v-model="form.audience.visits_max" size="small" :min="0" />
               </div>
             </div>
+            <div class="flex flex-col gap-1">
+              <label class="text-xs text-slate-500">Que ya recibieron la plantilla (difusiones pasadas)</label>
+              <MultiSelect
+                v-model="form.audience.received_templates"
+                :options="templateNames"
+                placeholder="Cualquiera"
+                display="chip"
+                filter
+                fluid
+              />
+            </div>
+            <div class="flex flex-col gap-1">
+              <label class="text-xs text-slate-500">Que NO han recibido la plantilla (segunda ola)</label>
+              <MultiSelect
+                v-model="form.audience.not_received_templates"
+                :options="templateNames"
+                placeholder="Cualquiera"
+                display="chip"
+                filter
+                fluid
+              />
+            </div>
             <div class="flex flex-wrap items-center gap-3">
               <Button
                 label="¿A cuántas le llega?"
@@ -592,11 +647,37 @@ function audienceSummary(a: BroadcastAudience): string {
           </ul>
         </div>
 
-        <DataTable v-if="failedRecipients.length" :value="failedRecipients" size="small" scrollable scroll-height="240px">
-          <Column field="name" header="Nombre" />
-          <Column field="phone" header="Teléfono" />
-          <Column field="error" header="Error" />
-        </DataTable>
+        <div v-if="failedRecipients.length" class="flex flex-col gap-2">
+          <p class="text-sm font-semibold text-slate-700">
+            No les llegó ({{ failedRecipients.length }}) — escríbeles tú desde otro WhatsApp
+          </p>
+          <label class="text-xs text-slate-500">
+            Mensaje que se abre en WhatsApp ({nombre} se cambia por cada persona)
+          </label>
+          <textarea
+            v-model="manualDraft"
+            rows="5"
+            class="w-full rounded-md border border-slate-300 px-2 py-1.5 text-sm"
+            data-testid="manual-draft"
+          />
+          <DataTable :value="failedRecipients" size="small" scrollable scroll-height="260px">
+            <Column field="name" header="Nombre" />
+            <Column field="phone" header="Teléfono" />
+            <Column field="error" header="Error" />
+            <Column header="Escribirle">
+              <template #body="{ data: row }">
+                <a
+                  :href="manualLink(row)"
+                  target="_blank"
+                  rel="noopener"
+                  class="font-medium text-emerald-700 underline"
+                >
+                  Abrir en WhatsApp
+                </a>
+              </template>
+            </Column>
+          </DataTable>
+        </div>
       </div>
       <p v-else-if="reportLoading" class="py-6 text-center text-slate-500">Cargando…</p>
     </Dialog>
